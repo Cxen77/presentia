@@ -24,9 +24,10 @@ async function apiRequest<T = any>(
     method?: string;
     body?: any;
     responseType?: 'json' | 'blob';
+    timeoutMs?: number;
   } = {}
 ): Promise<T> {
-  const { method = 'GET', body, responseType = 'json' } = options;
+  const { method = 'GET', body, responseType = 'json', timeoutMs = 30000 } = options;
   const token = await getAccessToken();
 
   if (!token) {
@@ -41,29 +42,45 @@ async function apiRequest<T = any>(
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
-  if (!res.ok) {
-    let errorMessage = `Request failed (${res.status})`;
-    try {
-      const errorData = await res.json();
-      errorMessage = errorData.error || errorMessage;
-    } catch {}
-    throw new Error(errorMessage);
+  try {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller ? controller.signal : undefined,
+    });
+
+    if (!res.ok) {
+      let errorMessage = `Request failed (${res.status})`;
+      try {
+        const errorData = await res.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {}
+      throw new Error(errorMessage);
+    }
+
+    if (responseType === 'blob') {
+      return (await res.blob()) as any;
+    }
+
+    // Handle empty responses (204 No Content)
+    const text = await res.text();
+    if (!text) return {} as T;
+    return JSON.parse(text);
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Backend request timed out. Render may be waking from a cold start, please retry.');
+    }
+    if (err.message && err.message.includes('Network request failed')) {
+      throw new Error(`Unable to reach backend server at ${API_BASE_URL}. Check your internet connection.`);
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
-
-  if (responseType === 'blob') {
-    return (await res.blob()) as any;
-  }
-
-  // Handle empty responses (204 No Content)
-  const text = await res.text();
-  if (!text) return {} as T;
-  return JSON.parse(text);
 }
 
 // =============================================================================
