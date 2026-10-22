@@ -1184,42 +1184,85 @@ export const QRScannerModal: React.FC<{
 
 // A. ONBOARDING SCREEN
 export const OnboardingScreen: React.FC<{ onGetStarted: () => void }> = ({ onGetStarted }) => {
+  const { height } = Dimensions.get('window');
+  const isCompact = height < 750;
+  const isSuperCompact = height < 680;
+
   return (
     <AppBackground variant="onboarding">
-      <ScrollView contentContainerStyle={styles.onboardScroll}>
-        <View style={styles.onboardHeader}>
-          <Text style={styles.onboardTitle}>
+      <View style={[styles.onboardContainer, isCompact && styles.onboardContainerCompact]}>
+        {/* Header Section */}
+        <View style={[styles.onboardHeader, isCompact && { marginBottom: 12 }]}>
+          <Text style={[styles.onboardTitle, isCompact && styles.onboardTitleCompact, isSuperCompact && { fontSize: 26, lineHeight: 30 }]}>
             Class{'\n'}Attendance{'\n'}
             <Text style={{ color: '#9AB9EC' }}>Simplified.</Text>
           </Text>
-          <Text style={styles.onboardSubtitle}>Scan • Attend • Stay in Track</Text>
+          <Text style={[styles.onboardSubtitle, isCompact && { fontSize: 13, marginTop: 4 }]}>
+            Scan • Attend • Stay in Track
+          </Text>
         </View>
 
-        <View style={styles.onboardGraphic}>
-          <View style={styles.phoneOutline}>
-            <QrCode size={110} color="#9AB9EC" strokeWidth={1.5} />
-            <View style={styles.qrCheckBubble}>
-              <Check size={20} color="#FFFFFF" strokeWidth={3} />
+        {/* QR Illustration Graphic */}
+        <View style={[styles.onboardGraphic, isCompact && { marginVertical: 8 }]}>
+          <View style={[
+            styles.phoneOutline,
+            isCompact && styles.phoneOutlineCompact,
+            isSuperCompact && { width: 120, height: 140, borderRadius: 22 }
+          ]}>
+            <QrCode
+              size={isSuperCompact ? 64 : isCompact ? 76 : 94}
+              color="#9AB9EC"
+              strokeWidth={1.5}
+            />
+            <View style={[
+              styles.qrCheckBubble,
+              isCompact && styles.qrCheckBubbleCompact,
+              isSuperCompact && { width: 30, height: 30, borderRadius: 15, bottom: -6, right: -6 }
+            ]}>
+              <Check
+                size={isSuperCompact ? 14 : isCompact ? 16 : 18}
+                color="#FFFFFF"
+                strokeWidth={3}
+              />
             </View>
           </View>
         </View>
 
-        <View style={styles.featuresList}>
-          <View style={styles.featureItem}>
-            <View style={styles.featureIcon}><Scan size={18} color="#9AB9EC" /></View>
-            <View><Text style={styles.featureTitle}>Quick Attendance</Text><Text style={styles.featureDesc}>Scan QR and mark instantly</Text></View>
+        {/* Feature Cards List */}
+        <View style={[styles.featuresList, isCompact && styles.featuresListCompact]}>
+          <View style={[styles.featureItem, isCompact && styles.featureItemCompact]}>
+            <View style={[styles.featureIcon, isCompact && styles.featureIconCompact]}>
+              <Scan size={isCompact ? 16 : 18} color="#9AB9EC" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.featureTitle, isCompact && { fontSize: 14 }]}>Quick Attendance</Text>
+              <Text style={[styles.featureDesc, isCompact && { fontSize: 11 }]}>Scan QR and mark instantly</Text>
+            </View>
           </View>
-          <View style={styles.featureItem}>
-            <View style={styles.featureIcon}><TrendingUp size={18} color="#9AB9EC" /></View>
-            <View><Text style={styles.featureTitle}>Track Progress</Text><Text style={styles.featureDesc}>Stay updated with your courses</Text></View>
+
+          <View style={[styles.featureItem, isCompact && styles.featureItemCompact]}>
+            <View style={[styles.featureIcon, isCompact && styles.featureIconCompact]}>
+              <TrendingUp size={isCompact ? 16 : 18} color="#9AB9EC" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.featureTitle, isCompact && { fontSize: 14 }]}>Track Progress</Text>
+              <Text style={[styles.featureDesc, isCompact && { fontSize: 11 }]}>Stay updated with your courses</Text>
+            </View>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.getStartedBtn} onPress={onGetStarted} activeOpacity={0.88}>
-          <Text style={styles.getStartedText}>Get Started</Text>
-          <ArrowRight size={18} color="#061522" strokeWidth={2.5} style={{ marginLeft: 6 }} />
-        </TouchableOpacity>
-      </ScrollView>
+        {/* Action Button above safe area */}
+        <View style={[styles.onboardActionWrap, isCompact && { paddingTop: 6 }]}>
+          <TouchableOpacity
+            style={[styles.getStartedBtn, isCompact && styles.getStartedBtnCompact]}
+            onPress={onGetStarted}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.getStartedText}>Get Started</Text>
+            <ArrowRight size={18} color="#061522" strokeWidth={2.5} style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        </View>
+      </View>
     </AppBackground>
   );
 };
@@ -2699,94 +2742,142 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  onboardScroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 36,
+  onboardContainer: {
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: Platform.OS === 'ios' ? 16 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 20,
+    justifyContent: 'space-between',
+  },
+  onboardContainerCompact: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
   onboardHeader: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   onboardTitle: {
-    fontSize: 42,
+    fontSize: 34,
     fontWeight: '800',
     color: '#FFFFFF',
-    lineHeight: 48,
+    lineHeight: 38,
     letterSpacing: -0.8,
   },
+  onboardTitleCompact: {
+    fontSize: 28,
+    lineHeight: 32,
+  },
   onboardSubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#8EA5C2',
-    marginTop: 8,
+    marginTop: 6,
     fontWeight: '500',
   },
   onboardGraphic: {
     alignItems: 'center',
-    marginVertical: 20,
+    justifyContent: 'center',
+    marginVertical: 12,
   },
   phoneOutline: {
-    width: 200,
-    height: 250,
-    borderRadius: 36,
-    borderWidth: 2.5,
+    width: 160,
+    height: 185,
+    borderRadius: 28,
+    borderWidth: 2,
     borderColor: '#264C72',
     backgroundColor: '#091A2A',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
+  phoneOutlineCompact: {
+    width: 136,
+    height: 155,
+    borderRadius: 24,
+  },
   qrCheckBubble: {
     position: 'absolute',
-    bottom: -10,
-    right: -10,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    bottom: -8,
+    right: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#356899',
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: '#061522',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  qrCheckBubbleCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    bottom: -6,
+    right: -6,
+  },
   featuresList: {
-    gap: 14,
-    marginBottom: 28,
+    gap: 10,
+    marginBottom: 14,
+  },
+  featuresListCompact: {
+    gap: 8,
+    marginBottom: 10,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0A1C2C',
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: '#1D3B5C',
   },
-  featureIcon: {
-    width: 40,
-    height: 40,
+  featureItemCompact: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 14,
+  },
+  featureIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: '#122D47',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    marginRight: 12,
+  },
+  featureIconCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    marginRight: 10,
   },
   featureTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   featureDesc: {
     fontSize: 12,
     color: '#8EA5C2',
-    marginTop: 2,
+    marginTop: 1,
+  },
+  onboardActionWrap: {
+    marginTop: 'auto',
+    paddingTop: 8,
   },
   getStartedBtn: {
-    height: 56,
-    borderRadius: 28,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: Colors.buttonPrimaryBg,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  getStartedBtnCompact: {
+    height: 46,
+    borderRadius: 23,
   },
   getStartedText: {
     fontSize: 16,
