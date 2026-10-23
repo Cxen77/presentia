@@ -40,3 +40,7 @@ Open Create Account at the local app, enter an inbox you control and a new app p
 Reference: https://supabase.com/docs/guides/auth/quickstarts/react-native
 
 The faculty portal's demo credential shortcut and cached-user authentication fallback were also removed. It now requires a real session and backend-verified faculty/admin role. A student account cannot become faculty through a client fallback; role rejection signs out only the portal session.
+
+## Deployment verification — 23 October 2026
+
+Render deployment of d8fe65d succeeded with PORT=10000 and /health. Using the same real account, the deployed /health, /api/auth/me, and /api/enrollment/my-classes endpoints returned 200 with the localhost web CORS origin accepted. Missing authentication returned 401. Refreshing the Supabase session succeeded; the account still had exactly one complete profile. Reloading the student browser restored the session and displayed the real empty-class dashboard. The local faculty portal rejected the same student account with an explicit faculty-only access error. No real faculty account was supplied, so successful faculty login remains untested.
