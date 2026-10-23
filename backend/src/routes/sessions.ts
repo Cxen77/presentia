@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
+import { attendancePhotoDeliveryUrl } from '../services/cloudinary';
 
 const router = Router();
 
@@ -382,7 +383,7 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     studentName: r.student?.full_name || '',
     studentRollNumber: r.student?.roll_number || '',
     studentAvatarUrl: r.student?.avatar_url || '',
-    verificationPhotoUrl: r.verification_photo_url || '',
+    verificationPhotoUrl: attendancePhotoDeliveryUrl(r.verification_photo_url),
     submittedAt: r.submitted_at,
     status: r.status,
     verifiedBy: r.verified_by,

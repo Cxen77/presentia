@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { isOwnedAttendancePhoto } from '../services/cloudinary';
 
 const router = Router();
 
 const submitSchema = z.object({
   qrToken: z.string().min(1),
-  verificationPhotoUrl: z.string().url().optional(),
+  verificationPhotoUrl: z.string().url().max(2048),
+  verificationPhotoSignature: z.string().regex(/^[a-f0-9]{40}$/i),
 });
 
 const verifySchema = z.object({
@@ -38,7 +40,10 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
     return res.status(400).json({ error: 'Invalid submission data' });
   }
 
-  const { qrToken, verificationPhotoUrl } = parsed.data;
+  const { qrToken, verificationPhotoUrl, verificationPhotoSignature } = parsed.data;
+  if (!isOwnedAttendancePhoto(verificationPhotoUrl, user.authUserId, verificationPhotoSignature)) {
+    return res.status(400).json({ error: 'Upload a fresh selfie to your account before submitting attendance.' });
+  }
 
   // 1. Look up the QR token
   const { data: tokenRecord } = await supabaseAdmin
@@ -96,7 +101,7 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
       class_id: session.class_id,
       student_id: user.profileId,
       qr_token_id: tokenRecord.id,
-      verification_photo_url: verificationPhotoUrl || null,
+      verification_photo_url: verificationPhotoUrl,
       status: 'PENDING',
     })
     .select()
