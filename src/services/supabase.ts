@@ -1,66 +1,51 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, processLock, type SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
-// Default Supabase project configuration (Can be updated via environment variables)
-const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://krdykejphzdnatxekerr.supabase.co';
-const SUPABASE_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  'sb_publishable_bRs6RNLcxXULsvopEbP3kw_X8vIUBBP';
+const PROJECT_URL = 'https://yurdfoblkaclivxqfpjt.supabase.co';
+const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+const key = process.env.EXPO_PUBLIC_SUPABASE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-// Universal storage adapter for React Native Mobile & Web
-const storageAdapter = {
-  getItem: async (key: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
-      }
-      return await AsyncStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  setItem: async (key: string, value: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, value);
-        return;
-      }
-      await AsyncStorage.setItem(key, value);
-    } catch {}
-  },
-  removeItem: async (key: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      await AsyncStorage.removeItem(key);
-    } catch {}
-  },
+export function isSupabaseConfigured(): boolean {
+  if (url !== PROJECT_URL || !key) return false;
+  if (key.startsWith('sb_publishable_')) return true;
+  try {
+    const payload = JSON.parse(globalThis.atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.ref === 'yurdfoblkaclivxqfpjt' && payload.role === 'anon';
+  } catch {
+    return false;
+  }
+}
+
+if (!isSupabaseConfigured()) {
+  throw new Error('Configure EXPO_PUBLIC_SUPABASE_URL for the intended project and its public publishable/anon key. Never use a secret/service-role key in the app.');
+}
+
+// Keep one client and native lifecycle listener even across Fast Refresh.
+const runtime = globalThis as typeof globalThis & {
+  __attendanceSupabase?: { client: SupabaseClient; url: string; key: string };
 };
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    storage: storageAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-
-export const isSupabaseConfigured = () => {
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL || SUPABASE_URL;
-  const key =
-    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-    SUPABASE_KEY;
-  return (
-    Boolean(url) &&
-    url !== 'https://xyzcompany.supabase.co' &&
-    Boolean(key) &&
-    !key.includes('mock-key')
-  );
-};
+if (runtime.__attendanceSupabase &&
+    (runtime.__attendanceSupabase.url !== url || runtime.__attendanceSupabase.key !== key)) {
+  throw new Error('Supabase configuration changed. Fully reload the app to apply it.');
+}
+if (!runtime.__attendanceSupabase) {
+  const client = createClient(url!, key!, {
+    auth: {
+      ...(Platform.OS !== 'web' ? { storage: AsyncStorage, lock: processLock } : {}),
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: Platform.OS === 'web',
+    },
+  });
+  runtime.__attendanceSupabase = { client, url: url!, key: key! };
+  if (Platform.OS !== 'web') {
+    const updateRefresh = (state: string | null) => {
+      if (state === 'active') void client.auth.startAutoRefresh();
+      else void client.auth.stopAutoRefresh();
+    };
+    updateRefresh(AppState.currentState ?? null);
+    AppState.addEventListener('change', updateRefresh);
+  }
+}
+export const supabase = runtime.__attendanceSupabase.client;

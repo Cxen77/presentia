@@ -6,11 +6,13 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 const missingSchemaMessage =
-  'Supabase database tables are missing. Run supabase/full_setup.sql in the Supabase SQL Editor, then try again.';
+  'Supabase database tables are missing. Run supabase/full_setup.sql or migration_000_core_schema.sql and migration_001_attendance.sql, then try again.';
 
 const joinClassSchema = z.object({
   enrollmentCode: z.string().min(1).max(30),
 });
+
+const isMissingSchema = (error: { code?: string }): boolean => error.code === 'PGRST205';
 
 /**
  * GET /api/enrollment/my-classes
@@ -20,7 +22,7 @@ router.get('/my-classes', requireAuth, async (req, res) => {
   const user = req.user!;
 
   if (!user.profileId) {
-    return res.json([]);
+    return res.status(400).json({ error: 'Complete your student profile before viewing enrolled classes.' });
   }
 
   const { data, error } = await supabaseAdmin
@@ -48,6 +50,9 @@ router.get('/my-classes', requireAuth, async (req, res) => {
 
   if (error) {
     logger.error({ err: error }, 'Error fetching enrolled classes');
+    if (isMissingSchema(error)) {
+      return res.status(503).json({ error: missingSchemaMessage });
+    }
     return res.status(500).json({ error: 'Failed to fetch enrolled classes' });
   }
 
@@ -103,7 +108,7 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     .maybeSingle();
 
   if (classError) {
-    if (classError.code === 'PGRST205') {
+    if (isMissingSchema(classError)) {
       return res.status(503).json({ error: missingSchemaMessage });
     }
     return res.status(500).json({ error: 'Failed to look up class' });
@@ -119,7 +124,7 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
       .limit(2);
 
     if (courseError) {
-      if (courseError.code === 'PGRST205') {
+      if (isMissingSchema(courseError)) {
         return res.status(503).json({ error: missingSchemaMessage });
       }
       return res.status(500).json({ error: 'Failed to look up class' });
@@ -133,10 +138,64 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
   }
 
   if (!cls) {
+    const { data: inactiveEnrollmentMatch, error: inactiveEnrollmentError } = await supabaseAdmin
+      .from('classes')
+      .select('id')
+      .eq('enrollment_code', code)
+      .eq('is_active', false)
+      .maybeSingle();
+
+    if (inactiveEnrollmentError) {
+      if (isMissingSchema(inactiveEnrollmentError)) {
+        return res.status(503).json({ error: missingSchemaMessage });
+      }
+      return res.status(500).json({ error: 'Failed to look up class' });
+    }
+
+    let inactiveClass = inactiveEnrollmentMatch;
+    if (!inactiveClass) {
+      const { data: inactiveCourseMatches, error: inactiveCourseError } = await supabaseAdmin
+        .from('classes')
+        .select('id')
+        .eq('course_code', code)
+        .eq('is_active', false)
+        .limit(1);
+
+      if (inactiveCourseError) {
+        if (isMissingSchema(inactiveCourseError)) {
+          return res.status(503).json({ error: missingSchemaMessage });
+        }
+        return res.status(500).json({ error: 'Failed to look up class' });
+      }
+      inactiveClass = inactiveCourseMatches?.[0] || null;
+    }
+
+    if (inactiveClass) {
+      return res.status(409).json({
+        error: `The class for code "${code}" is inactive. Ask your instructor to reactivate it.`,
+      });
+    }
+  }
+
+  if (!cls) {
     return res.status(404).json({
       error: `No active class found with code "${code}". Please verify with your professor.`,
     });
   }
+
+  const classResponse = {
+    id: cls.id,
+    courseCode: cls.course_code,
+    className: cls.class_name,
+    department: cls.department,
+    enrollmentCode: cls.enrollment_code,
+    teacherName: cls.teacher_name,
+    scheduleInfo: cls.schedule_info,
+    room: cls.room,
+    classType: cls.class_type,
+    credits: cls.credits,
+    isActive: cls.is_active,
+  };
 
   // Check for existing enrollment
   const { data: existing, error: existingError } = await supabaseAdmin
@@ -147,8 +206,8 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     .maybeSingle();
 
   if (existingError) {
-    return res.status(existingError.code === 'PGRST205' ? 503 : 500).json({
-      error: existingError.code === 'PGRST205' ? missingSchemaMessage : 'Failed to check enrollment',
+    return res.status(isMissingSchema(existingError) ? 503 : 500).json({
+      error: isMissingSchema(existingError) ? missingSchemaMessage : 'Failed to check enrollment',
     });
   }
 
@@ -165,19 +224,14 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
       .eq('id', existing.id);
 
     if (reactivateError) {
-      return res.status(reactivateError.code === 'PGRST205' ? 503 : 500).json({
-        error: reactivateError.code === 'PGRST205' ? missingSchemaMessage : 'Failed to reactivate enrollment',
+      return res.status(isMissingSchema(reactivateError) ? 503 : 500).json({
+        error: isMissingSchema(reactivateError) ? missingSchemaMessage : 'Failed to reactivate enrollment',
       });
     }
 
     return res.json({
       message: `Re-enrolled in ${cls.class_name}`,
-      classData: {
-        id: cls.id,
-        className: cls.class_name,
-        courseCode: cls.course_code,
-        department: cls.department,
-      },
+      classData: classResponse,
     });
   }
 
@@ -191,18 +245,21 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     });
 
   if (enrollError) {
+    if (enrollError.code === '23505') {
+      return res.status(409).json({
+        error: `You are already enrolled in ${cls.class_name} (${cls.course_code}).`,
+      });
+    }
     logger.error({ err: enrollError }, 'Enrollment insert failed');
-    return res.status(500).json({ error: enrollError.message });
+    if (isMissingSchema(enrollError)) {
+      return res.status(503).json({ error: missingSchemaMessage });
+    }
+    return res.status(500).json({ error: 'Failed to enroll in class' });
   }
 
   return res.status(201).json({
     message: `Successfully enrolled in ${cls.class_name}`,
-    classData: {
-      id: cls.id,
-      className: cls.class_name,
-      courseCode: cls.course_code,
-      department: cls.department,
-    },
+    classData: classResponse,
   });
 });
 

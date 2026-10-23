@@ -95,9 +95,11 @@ A production-grade React Native & Expo application strictly recreating the visua
 
 ## 🗄️ Supabase Database Setup
 
-1. Open the SQL Editor for the same Supabase project configured in the app and faculty portal.
-2. Run `supabase/full_setup.sql`. This creates the profile, class, enrollment, and attendance tables, applies their Row-Level Security policies, and seeds the default enrollment codes.
-3. Confirm the SQL completes successfully before creating classes or joining with a code. The faculty portal must save a class to Supabase for its enrollment code to work in the student app.
+1. Open the SQL Editor for the same Supabase project configured in the app, faculty portal, and Render backend.
+2. Either run `supabase/full_setup.sql`, or run `supabase/migration_000_core_schema.sql` followed by `supabase/migration_001_attendance.sql`.
+3. Confirm the SQL completes successfully. The scripts create the profile, class, enrollment, and invitation tables, enable RLS, constrain student access to their own records, and refresh the PostgREST schema cache.
+4. For a development student, create a real user in **Supabase Dashboard → Authentication → Users** (or use the app's Create Account flow), confirm the email if required, then sign in with that user's email and password. Complete the student profile before joining classes. There is no built-in demo login.
+5. Create an active class in the faculty portal and enter its enrollment code in the student app. A course code such as `CS203` is accepted only if it identifies one active class; otherwise use the unique enrollment code.
 
 ---
 

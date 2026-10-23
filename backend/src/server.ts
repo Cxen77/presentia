@@ -58,7 +58,7 @@ app.use(errorHandler);
 
 // --- Start ---
 const port = parseInt(env.PORT, 10);
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   logger.info({ port, env: env.NODE_ENV }, '🚀 Backend server started');
 });
 

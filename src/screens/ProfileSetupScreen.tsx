@@ -56,6 +56,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -102,13 +103,14 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
 
   const goNext = () => {
     if (saving) return;
+    setSetupError('');
 
     if (step === 2 && !fullName.trim()) {
-      Alert.alert('Required Field', 'Please enter your full name to proceed.');
+      setSetupError('Please enter your full name to proceed.');
       return;
     }
     if (step === 3 && !usn.trim()) {
-      Alert.alert('Required Field', 'Please enter your USN / Roll number to proceed.');
+      setSetupError('Please enter your USN / Roll number to proceed.');
       return;
     }
     if (step === 4 && !department) {
@@ -197,6 +199,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
   };
 
   const handleFinish = async () => {
+    setSetupError('');
     if (!fullName.trim() || !usn.trim()) {
       Alert.alert('Missing Info', 'Please provide your full name and USN.');
       return;
@@ -214,17 +217,21 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
 
       setSaving(false);
       if (result.success) {
-        Alert.alert(
-          "Profile Complete! 🎉",
-          `Welcome to campus, ${result.profile?.firstName}! Your student dashboard is ready.`,
-          [{ text: "Open Dashboard", onPress: onComplete }]
-        );
+        if (Platform.OS === 'web') {
+          onComplete();
+        } else {
+          Alert.alert(
+            "Profile Complete! 🎉",
+            `Welcome to campus, ${result.profile?.firstName}! Your student dashboard is ready.`,
+            [{ text: "Open Dashboard", onPress: onComplete }]
+          );
+        }
       } else {
-        Alert.alert('Notice', result.error || 'Could not complete profile.');
+        setSetupError(result.error || 'Could not complete profile.');
       }
     } catch (err: any) {
       setSaving(false);
-      Alert.alert('Error', err.message || 'Failed to save profile.');
+      setSetupError(err.message || 'Failed to save profile.');
     }
   };
 
@@ -459,6 +466,8 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
           <Text style={styles.stepSubtitle}>{currentConfig.subtitle}</Text>
         </Animated.View>
 
+        {!!initialEmail && <Text style={{ color: '#8EA5C2', fontSize: 12, marginBottom: 10 }}>Signed in as {initialEmail}</Text>}
+        {!!setupError && <Text accessibilityRole="alert" style={{ color: '#F87171', marginBottom: 12 }}>{setupError}</Text>}
         {/* Step Content */}
         <Animated.View
           style={[

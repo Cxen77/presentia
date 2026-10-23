@@ -7,6 +7,34 @@ import { supabase } from './supabase';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
+export interface EnrolledClassResponse {
+  id: string;
+  enrollmentId: string;
+  subject: string;
+  courseCode: string;
+  classType: string;
+  timeSlot: string;
+  room: string;
+  teacherName?: string;
+  department: string;
+  enrollmentCode: string;
+  credits: number;
+}
+
+export interface JoinedClassResponse {
+  id: string;
+  courseCode: string;
+  className: string;
+  department: string;
+  enrollmentCode: string;
+  teacherName?: string;
+  scheduleInfo?: string;
+  room?: string;
+  classType?: string;
+  credits?: number;
+  isActive?: boolean;
+}
+
 /**
  * Gets the current Supabase access token for authenticated API calls.
  */
@@ -74,7 +102,10 @@ async function apiRequest<T = any>(
     if (err.name === 'AbortError') {
       throw new Error('Backend request timed out. Render may be waking from a cold start, please retry.');
     }
-    if (err.message && err.message.includes('Network request failed')) {
+    if (
+      err instanceof Error &&
+      (err.message.includes('Network request failed') || err.message.includes('Failed to fetch'))
+    ) {
       throw new Error(`Unable to reach backend server at ${API_BASE_URL}. Check your internet connection.`);
     }
     throw err;
@@ -114,11 +145,11 @@ export async function updateMyProfile(data: {
 // =============================================================================
 
 export async function getMyEnrolledClasses() {
-  return apiRequest('/api/enrollment/my-classes');
+  return apiRequest<EnrolledClassResponse[]>('/api/enrollment/my-classes');
 }
 
 export async function joinClassByCode(enrollmentCode: string) {
-  return apiRequest('/api/enrollment/join', {
+  return apiRequest<{ message: string; classData: JoinedClassResponse }>('/api/enrollment/join', {
     method: 'POST',
     body: { enrollmentCode },
   });

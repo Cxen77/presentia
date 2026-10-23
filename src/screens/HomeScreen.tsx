@@ -40,6 +40,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [classes, setClasses] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modals state
   const [joinClassVisible, setJoinClassVisible] = useState(false);
@@ -52,30 +53,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
   const loadData = useCallback(async () => {
     try {
       const profile = await studentService.getProfile();
-      if (profile) {
-        setStudent(profile);
-        const enrolled = await studentService.getEnrolledClasses(profile.id);
-        setClasses(enrolled);
-      } else {
-        // Fallback default student profile for display
-        const fallbackProfile: StudentProfile = {
-          id: 'dev-student',
-          name: 'Aryan Sharma',
-          firstName: 'Aryan',
-          degree: 'B.Tech Computer Science',
-          rollNumber: 'CS24123',
-          semester: '3rd Semester',
-          avatarUrl: 'assets/aryan.jpg',
-          attendancePercent: 0,
-          totalClasses: 0,
-          presentToday: 0,
-        };
-        setStudent(fallbackProfile);
-        const enrolled = await studentService.getEnrolledClasses(fallbackProfile.id);
-        setClasses(enrolled);
+      if (!profile) {
+        setStudent(null);
+        setClasses([]);
+        setLoadError('Sign in and complete your student profile to use the class dashboard.');
+        return;
       }
+      setStudent(profile);
+      const enrolled = await studentService.getEnrolledClasses(profile.id);
+      setClasses(enrolled);
+      setLoadError(null);
     } catch (err) {
       console.error('Error loading home data:', err);
+      setStudent(null);
+      setClasses([]);
+      setLoadError(err instanceof Error ? err.message : 'Unable to load your class dashboard.');
     } finally {
       setLoading(false);
     }
@@ -90,18 +82,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
     setClassDetailsVisible(true);
   };
 
-  const currentStudent = student || {
-    id: 'temp',
-    name: 'Student',
-    firstName: 'Student',
-    degree: 'Computer Science',
-    rollNumber: 'CS24123',
-    semester: '3rd Semester',
-    avatarUrl: '',
-    attendancePercent: 0,
-    totalClasses: 0,
-    presentToday: 0,
-  };
+  if (!student) {
+    return (
+      <AppBackground variant="dashboard">
+        <View style={styles.loadingContainer}>
+          {loading && <ActivityIndicator size="large" color="#9AB9EC" />}
+          <Text style={styles.loadingText}>
+            {loading ? 'Loading your student profile...' : loadError}
+          </Text>
+          {!loading && (
+            <TouchableOpacity style={styles.emptyJoinBtn} onPress={onLogout}>
+              <Text style={styles.emptyJoinBtnText}>Return to Sign In</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </AppBackground>
+    );
+  }
+  const currentStudent = student;
 
   return (
     <AppBackground variant="dashboard">
@@ -200,11 +198,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
               <Text style={styles.emptyJoinBtnText}>Join Your First Class</Text>
             </TouchableOpacity>
 
-            {/* Quick Helper to load seed classes for quick testing */}
-            <View style={styles.sampleCodesBox}>
-              <Text style={styles.sampleCodesTitle}>TRY SEED TEST CODES:</Text>
-              <Text style={styles.sampleCodesText}>CS201-DS • CS203-DB • CS205-OS • CS207-CN</Text>
-            </View>
           </View>
         ) : (
           /* Real Enrolled Class Cards */
@@ -442,26 +435,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.buttonPrimaryText,
-  },
-  sampleCodesBox: {
-    marginTop: 20,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#1A334E',
-    alignItems: 'center',
-    width: '100%',
-  },
-  sampleCodesTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#5A7B9E',
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  sampleCodesText: {
-    fontSize: 11,
-    color: '#8EA5C2',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontWeight: '600',
   },
 });

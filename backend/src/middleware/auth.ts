@@ -52,6 +52,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     if (profileError) {
       logger.error({ err: profileError }, 'Error loading user profile');
+      if (profileError.code === 'PGRST205') {
+        return res.status(503).json({
+          error: 'Supabase profile table is missing. Run supabase/full_setup.sql or the ordered Supabase migrations.',
+        });
+      }
       return res.status(500).json({ error: 'Failed to load user profile' });
     }
 

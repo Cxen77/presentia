@@ -1,6 +1,6 @@
 -- ====================================================================
 -- UNIFIED SUPABASE SETUP SCRIPT: CLASS ATTENDANCE & FACULTY PORTAL
--- Run this in the Supabase SQL Editor (https://supabase.com/dashboard/project/krdykejphzdnatxekerr/sql)
+-- Run this in the Supabase SQL Editor (https://supabase.com/dashboard/project/yurdfoblkaclivxqfpjt/sql)
 -- Idempotent & safe to run on existing databases.
 -- ====================================================================
 
@@ -81,6 +81,21 @@ CREATE TABLE IF NOT EXISTS public.class_invitations (
     is_active BOOLEAN DEFAULT TRUE
 );
 
+ALTER TABLE public.class_invitations
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'class_invitations'
+      AND column_name = 'is_revoked'
+  ) THEN
+    EXECUTE 'UPDATE public.class_invitations SET is_active = NOT is_revoked';
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_class_invitations_code ON public.class_invitations(invitation_code);
 
 -- 6. ATTENDANCE SESSIONS TABLE
@@ -159,13 +174,24 @@ DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
     ON public.profiles FOR INSERT
     TO authenticated
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (auth.uid() = user_id AND role = 'student');
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
     ON public.profiles FOR UPDATE
     TO authenticated
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+REVOKE INSERT, UPDATE ON public.profiles FROM authenticated;
+GRANT SELECT ON public.profiles TO authenticated;
+GRANT INSERT (user_id, email, full_name, first_name, roll_number, degree, semester, avatar_url, updated_at)
+    ON public.profiles TO authenticated;
+GRANT UPDATE (user_id, email, full_name, first_name, roll_number, degree, semester, avatar_url, updated_at)
+    ON public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.classes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.class_enrollments TO authenticated;
+GRANT SELECT ON public.class_invitations TO authenticated;
 
 DROP POLICY IF EXISTS "Faculty can view enrolled student profiles" ON public.profiles;
 CREATE POLICY "Faculty can view enrolled student profiles"

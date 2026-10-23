@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
-  Alert,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -18,7 +17,10 @@ import { AuthInput } from '../components/AuthInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
-import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { isSupabaseConfigured } from '../services/supabase';
+import { authErrorMessage } from '../services/authErrors';
+import { registerStudent } from '../services/registration';
+import { EmailVerificationForm } from '../components/EmailVerificationForm';
 
 interface RegisterScreenProps {
   onBack: () => void;
@@ -33,21 +35,25 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const showMessage = (_title: string, text: string) => setMessage(text);
 
   const handleRegister = async () => {
+    setMessage('');
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password.trim()) {
-      Alert.alert('Required Fields', 'Please enter your institutional email and password.');
+      showMessage('Required Fields', 'Please enter your institutional email and password.');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Password Length', 'Password must be at least 6 characters long.');
+      showMessage('Password Length', 'Password must be at least 6 characters long.');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Password Mismatch', 'The passwords do not match. Please re-enter.');
+      showMessage('Password Mismatch', 'The passwords do not match. Please re-enter.');
       return;
     }
 
@@ -55,37 +61,24 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase.auth.signUp({
-          email: trimmedEmail,
-          password: password.trim(),
-        });
-
-        setLoading(false);
-
-        if (error) {
-          Alert.alert('Registration Error', error.message);
-          return;
-        }
-
-        if (data?.user) {
-          onRegistered(trimmedEmail);
+        const result = await registerStudent(email, password);
+        if (result.status === 'verified') {
+          onRegistered(result.email);
+        } else if (result.status === 'existing_account') {
+          showMessage('Account Already Registered', 'An account already exists. Sign in with its password, or select Verify existing email if it is still unconfirmed.');
         } else {
-          Alert.alert(
-            'Check Email',
-            'Registration successful! If email confirmation is enabled, please verify your email before logging in.'
-          );
-          onRegistered(trimmedEmail);
+          setPendingEmail(result.email);
+          setPassword('');
+          setConfirmPassword('');
         }
+        setLoading(false);
       } catch (err: any) {
         setLoading(false);
-        Alert.alert('Network Error', err.message || 'Could not connect to authentication server.');
+        showMessage('Network Error', authErrorMessage(err));
       }
     } else {
-      // Local development fallback
-      setTimeout(() => {
-        setLoading(false);
-        onRegistered(trimmedEmail);
-      }, 400);
+      setLoading(false);
+      showMessage('Supabase Not Configured', 'Configure the project URL and public key before registering.');
     }
   };
 
@@ -107,12 +100,22 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
         {/* Header */}
         <View style={styles.headerContainer}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Enter your institutional email & password</Text>
+          <Text style={styles.title}>{pendingEmail ? 'Verify Your Email' : 'Create Account'}</Text>
+          <Text style={styles.subtitle}>{pendingEmail ? 'Confirm your student account' : 'Enter your institutional email & password'}</Text>
         </View>
 
         {/* Form: Email, Password & Confirm Password */}
         <View style={styles.formContainer}>
+          {!!message && <Text style={{ color: '#F87171', marginBottom: 16 }}>{message}</Text>}
+          {pendingEmail ? (
+            <EmailVerificationForm
+              key={pendingEmail}
+              email={pendingEmail}
+              onVerified={() => onRegistered(pendingEmail)}
+              onChangeEmail={() => { setPendingEmail(''); setMessage(''); }}
+            />
+          ) : (
+          <>
           <AuthInput
             label="Email Address"
             placeholder="student@univ.edu"
@@ -149,6 +152,22 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             showArrow
             style={styles.registerButton}
           />
+          <TouchableOpacity
+            disabled={loading}
+            onPress={() => {
+              if (!email.trim().includes('@')) { setMessage('Enter your registered email address first.'); return; }
+              setMessage('');
+              setPassword('');
+              setConfirmPassword('');
+              setPendingEmail(email.trim());
+            }}
+            style={{ paddingVertical: 16, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#9AB9EC', fontWeight: '600' }}>Verify existing email</Text>
+          </TouchableOpacity>
+          </>
+          )}
+
         </View>
 
         {/* Footer */}

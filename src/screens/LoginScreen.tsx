@@ -20,6 +20,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { authErrorMessage } from '../services/authErrors';
 
 interface LoginScreenProps {
   onBack: () => void;
@@ -32,62 +33,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onLoginSuccess,
   onNavigateRegister,
 }) => {
-  const [identifier, setIdentifier] = useState('aryan.sharma@cs.univ.edu');
-  const [password, setPassword] = useState('password123');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     const trimmedId = identifier.trim();
     if (!trimmedId || !password.trim()) {
-      Alert.alert('Required Fields', 'Please enter your Email or Roll Number and Password.');
+      Alert.alert('Required Fields', 'Please enter your email address and password.');
+      return;
+    }
+    if (!trimmedId.includes('@')) {
+      Alert.alert('Email Required', 'Sign in with the email address registered to your Supabase account.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      Alert.alert('Supabase Not Configured', 'Add the Supabase project URL and publishable key before signing in.');
       return;
     }
 
     setLoading(true);
 
-    if (isSupabaseConfigured()) {
-      try {
-        let emailToUse = trimmedId;
-
-        // If user typed a roll number instead of an email, look up their email in profiles
-        if (!trimmedId.includes('@')) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('roll_number', trimmedId.toUpperCase())
-            .maybeSingle();
-
-          if (profile?.email) {
-            emailToUse = profile.email;
-          }
-        }
-
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: emailToUse,
-          password: password.trim(),
-        });
-
-        setLoading(false);
-
-        if (error) {
-          Alert.alert('Login Failed', error.message || 'Invalid credentials.');
-          return;
-        }
-
-        if (data.session) {
-          onLoginSuccess();
-        }
-      } catch (err: any) {
-        setLoading(false);
-        Alert.alert('Network Error', err.message || 'Could not connect to authentication server.');
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedId,
+        password,
+      });
+      if (error) {
+        Alert.alert(
+          'Login Failed',
+          authErrorMessage(error)
+        );
+        return;
       }
-    } else {
-      // Offline / development fallback
-      setTimeout(() => {
-        setLoading(false);
-        onLoginSuccess();
-      }, 400);
+      if (!data.session) {
+        Alert.alert('Login Failed', 'Supabase did not create an authenticated session. Verify your email and try again.');
+        return;
+      }
+      onLoginSuccess();
+    } catch (err) {
+      Alert.alert('Network Error', authErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -116,8 +104,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         {/* Form Inputs */}
         <View style={styles.formContainer}>
           <AuthInput
-            label="Email or Roll Number"
-            placeholder="student@univ.edu / CS24123"
+            label="Email Address"
+            placeholder="student@univ.edu"
             value={identifier}
             onChangeText={setIdentifier}
             autoCapitalize="none"
@@ -171,7 +159,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {/* Footer */}
         <View style={styles.footerContainer}>
-          <Text style={styles.footerMutedText}>Don't have an account? </Text>
+          <Text style={styles.footerMutedText}>Don&apos;t have an account? </Text>
           <TouchableOpacity onPress={onNavigateRegister} activeOpacity={0.7}>
             <Text style={styles.footerHighlightText}>Create Account</Text>
           </TouchableOpacity>

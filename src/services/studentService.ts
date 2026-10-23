@@ -1,125 +1,53 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { DatabaseClass, ClassEnrollment, StudentProfile, ClassScheduleItem } from '../types';
+import { DatabaseClass, StudentProfile, ClassScheduleItem } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as api from './api';
 
 const LOCAL_STORAGE_KEY_PROFILE = 'class_attendance_student_profile';
 const LOCAL_STORAGE_KEY_ENROLLMENTS = 'class_attendance_enrolled_classes';
-
-const getSupabaseErrorMessage = (error: { code?: string; message: string }): string => {
-  if (error.code === 'PGRST205') {
-    return 'Supabase database tables are missing. Run supabase/full_setup.sql in the Supabase SQL Editor, then try again.';
-  }
-  return error.message;
-};
-
-// Seed classes for development / offline fallback
-export const SEED_CLASSES: DatabaseClass[] = [
-  {
-    id: '11111111-1111-1111-1111-111111111111',
-    course_code: 'CS201',
-    class_name: 'Data Structures',
-    department: 'Computer Science',
-    enrollment_code: 'CS201-DS',
-    teacher_name: 'Prof. R. Sengupta',
-    schedule_info: 'Today • 10:00 - 11:30 AM',
-    room: 'Lab 3B • Room 402',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '22222222-2222-2222-2222-222222222222',
-    course_code: 'CS203',
-    class_name: 'Database Management Systems',
-    department: 'Computer Science',
-    enrollment_code: 'CS203-DB',
-    teacher_name: 'Dr. Ananya Roy',
-    schedule_info: 'Today • 11:45 - 01:15 PM',
-    room: 'Hall A • Room 204',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '33333333-3333-3333-3333-333333333333',
-    course_code: 'CS205',
-    class_name: 'Operating Systems',
-    department: 'Computer Science',
-    enrollment_code: 'CS205-OS',
-    teacher_name: 'Prof. Vikram Mehta',
-    schedule_info: 'Today • 02:00 - 03:30 PM',
-    room: 'Seminar 1 • Room 102',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '44444444-4444-4444-4444-444444444444',
-    course_code: 'CS207',
-    class_name: 'Computer Networks',
-    department: 'Computer Science',
-    enrollment_code: 'CS207-CN',
-    teacher_name: 'Dr. Priya Sharma',
-    schedule_info: 'Today • 03:45 - 05:15 PM',
-    room: 'Lab 1A • Room 301',
-    class_type: 'Practical',
-    credits: 4,
-    is_active: true,
-  },
-];
 
 class StudentService {
   /**
    * Get the current authenticated student profile from Supabase
    */
   async getProfile(): Promise<StudentProfile | null> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
+    if (!isSupabaseConfigured()) return null;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) throw new Error(`Authentication failed: ${authError.message}`);
+    if (!user) return null;
 
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-        if (error) {
-          console.error('Error fetching student profile from Supabase:', error.message);
-          return null;
-        }
-
-        if (data) {
-          const profile: StudentProfile = {
-            id: data.id,
-            userId: data.user_id,
-            email: data.email || user.email || '',
-            name: data.full_name,
-            firstName: data.first_name || data.full_name.split(' ')[0],
-            degree: data.degree || 'Computer Science',
-            rollNumber: data.roll_number,
-            semester: data.semester || '3rd Semester',
-            avatarUrl: data.avatar_url || '',
-            attendancePercent: 0,
-            totalClasses: 0,
-            presentToday: 0,
-          };
-          // Cache locally
-          await AsyncStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(profile));
-          return profile;
-        }
-      } catch (err) {
-        console.error('getProfile Supabase error:', err);
-      }
+    if (error) {
+      throw new Error(
+        error.code === 'PGRST205'
+          ? 'Supabase profile table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Failed to load your profile: ${error.message}`
+      );
     }
 
-    // Local storage fallback for development / offline
-    try {
-      const cached = await AsyncStorage.getItem(LOCAL_STORAGE_KEY_PROFILE);
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
+    if (data && data.full_name?.trim() && data.roll_number?.trim() && data.degree?.trim() && data.semester?.trim()) {
+      const profile: StudentProfile = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email || user.email || '',
+        name: data.full_name,
+        firstName: data.first_name || data.full_name.split(' ')[0],
+        degree: data.degree || 'Computer Science',
+        rollNumber: data.roll_number,
+        semester: data.semester || '3rd Semester',
+        avatarUrl: data.avatar_url || '',
+        attendancePercent: 0,
+        totalClasses: 0,
+        presentToday: 0,
+      };
+      await AsyncStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(profile));
+      return profile;
+    }
 
     return null;
   }
@@ -136,154 +64,104 @@ class StudentService {
   }): Promise<{ success: boolean; profile?: StudentProfile; error?: string }> {
     const firstName = profileData.fullName.trim().split(' ')[0];
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          return { success: false, error: 'User not authenticated' };
-        }
-
-        // Upsert into Supabase profiles table
-        const { data, error } = await supabase
-          .from('profiles')
-          .upsert(
-            {
-              user_id: user.id,
-              email: user.email || '',
-              full_name: profileData.fullName.trim(),
-              first_name: firstName,
-              roll_number: profileData.rollNumber.trim().toUpperCase(),
-              degree: profileData.department.trim(),
-              semester: profileData.semester.trim(),
-              avatar_url: profileData.avatarUrl || null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'user_id' }
-          )
-          .select()
-          .single();
-
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
-        const profile: StudentProfile = {
-          id: data.id,
-          userId: data.user_id,
-          email: data.email,
-          name: data.full_name,
-          firstName: data.first_name,
-          degree: data.degree,
-          rollNumber: data.roll_number,
-          semester: data.semester,
-          avatarUrl: data.avatar_url || '',
-          attendancePercent: 0,
-          totalClasses: 0,
-          presentToday: 0,
-        };
-
-        await AsyncStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(profile));
-        return { success: true, profile };
-      } catch (err: any) {
-        return { success: false, error: err.message || 'Failed to save profile' };
-      }
+    if (!isSupabaseConfigured()) {
+      return { success: false, error: 'Supabase is not configured. Sign in with a real Supabase account to save your profile.' };
     }
 
-    // Local fallback for offline/development
-    const mockProfile: StudentProfile = {
-      id: 'local-student-id',
-      email: 'student@univ.edu',
-      name: profileData.fullName.trim(),
-      firstName,
-      degree: profileData.department.trim(),
-      rollNumber: profileData.rollNumber.trim().toUpperCase(),
-      semester: profileData.semester.trim(),
-      avatarUrl: profileData.avatarUrl || '',
-      attendancePercent: 0,
-      totalClasses: 0,
-      presentToday: 0,
-    };
-    await AsyncStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(mockProfile));
-    return { success: true, profile: mockProfile };
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return { success: false, error: 'Sign in with a valid Supabase account before saving your profile.' };
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            email: user.email || '',
+            full_name: profileData.fullName.trim(),
+            first_name: firstName,
+            roll_number: profileData.rollNumber.trim().toUpperCase(),
+            degree: profileData.department.trim(),
+            semester: profileData.semester.trim(),
+            avatar_url: profileData.avatarUrl || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        )
+        .select()
+        .single();
+
+      if (error) {
+        return {
+          success: false,
+          error: error.code === 'PGRST205'
+            ? 'Supabase profile table is missing. Run supabase/migration_000_core_schema.sql.'
+            : error.code === '23505' && /roll_number/.test(error.message)
+              ? 'This roll number is already linked to another account. Use your original account or enter your own roll number.'
+              : error.message,
+        };
+      }
+
+      const profile: StudentProfile = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        name: data.full_name,
+        firstName: data.first_name,
+        degree: data.degree,
+        rollNumber: data.roll_number,
+        semester: data.semester,
+        avatarUrl: data.avatar_url || '',
+        attendancePercent: 0,
+        totalClasses: 0,
+        presentToday: 0,
+      };
+
+      await AsyncStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(profile));
+      return { success: true, profile };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Failed to save profile' };
+    }
   }
 
   /**
    * Fetch all classes the student is enrolled in
    */
   async getEnrolledClasses(studentProfileId?: string): Promise<ClassScheduleItem[]> {
-    if (isSupabaseConfigured() && studentProfileId) {
-      try {
-        const { data, error } = await supabase
-          .from('class_enrollments')
-          .select(`
-            id,
-            status,
-            classes:class_id (
-              id,
-              course_code,
-              class_name,
-              department,
-              enrollment_code,
-              teacher_name,
-              schedule_info,
-              room,
-              class_type,
-              credits
-            )
-          `)
-          .eq('student_id', studentProfileId)
-          .eq('status', 'active');
-
-        if (error) {
-          console.error('Error fetching enrolled classes:', error.message);
-        } else if (data) {
-          const formatted: ClassScheduleItem[] = data
-            .filter((item: any) => item.classes)
-            .map((item: any) => {
-              const cls = item.classes as DatabaseClass;
-              const isDS = cls.course_code === 'CS201' || cls.class_name.toLowerCase().includes('data structure');
-              return {
-                id: cls.id,
-                enrollmentId: item.id,
-                subject: cls.class_name,
-                courseCode: cls.course_code,
-                classType: cls.class_type || 'Theory',
-                timeSlot: cls.schedule_info || '10:00 - 11:30 AM',
-                room: cls.room || 'Room 402',
-                iconName: isDS ? 'chart' : 'book',
-                isHighlighted: isDS,
-                status: 'Not Started',
-                teacherName: cls.teacher_name,
-                department: cls.department,
-                enrollmentCode: cls.enrollment_code,
-              };
-            });
-
-          // Cache locally
-          await AsyncStorage.setItem(LOCAL_STORAGE_KEY_ENROLLMENTS, JSON.stringify(formatted));
-          return formatted;
-        }
-      } catch (err) {
-        console.error('getEnrolledClasses Supabase error:', err);
-      }
+    void studentProfileId;
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw new Error(`Could not verify Supabase sign-in: ${error.message}`);
+    if (!user) {
+      throw new Error('Sign in with a valid Supabase account to view enrolled classes.');
     }
 
-    // Local storage fallback for development / offline
-    try {
-      const cached = await AsyncStorage.getItem(LOCAL_STORAGE_KEY_ENROLLMENTS);
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
-
-    return [];
+    const response = await api.getMyEnrolledClasses();
+    const formatted: ClassScheduleItem[] = response.map((item) => ({
+      id: item.id,
+      enrollmentId: item.enrollmentId,
+      subject: item.subject,
+      courseCode: item.courseCode,
+      classType: item.classType || 'Theory',
+      timeSlot: item.timeSlot || '',
+      room: item.room || '',
+      iconName: item.courseCode === 'CS201' ? 'chart' : 'book',
+      isHighlighted: item.courseCode === 'CS201',
+      status: 'Not Started',
+      teacherName: item.teacherName,
+      department: item.department,
+      enrollmentCode: item.enrollmentCode,
+    }));
+    await AsyncStorage.setItem(LOCAL_STORAGE_KEY_ENROLLMENTS, JSON.stringify(formatted));
+    return formatted;
   }
 
   /**
    * Validate and join a class using a teacher-provided class code
    */
   async joinClassByCode(
-    studentProfileId: string,
+    _studentProfileId: string,
     enrollmentCode: string
   ): Promise<{
     success: boolean;
@@ -296,153 +174,39 @@ class StudentService {
       return { success: false, error: 'Please enter a valid class code.' };
     }
 
-    if (isSupabaseConfigured()) {
-      try {
-        // 1. Check if class exists and is active
-        const { data: enrollmentMatch, error: classError } = await supabase
-          .from('classes')
-          .select('*')
-          .eq('enrollment_code', cleanedCode)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (classError) {
-          return { success: false, error: getSupabaseErrorMessage(classError) };
-        }
-
-        let classData: DatabaseClass | null = enrollmentMatch;
-
-        // Course codes are accepted only when they identify a single active class.
-        if (!classData) {
-          const { data: courseMatches, error: courseError } = await supabase
-            .from('classes')
-            .select('*')
-            .eq('course_code', cleanedCode)
-            .eq('is_active', true)
-            .limit(2);
-
-          if (courseError) {
-            return { success: false, error: getSupabaseErrorMessage(courseError) };
-          }
-          if (courseMatches && courseMatches.length > 1) {
-            return {
-              success: false,
-              error: `Course code "${cleanedCode}" matches multiple classes. Use the unique enrollment code shown in the faculty portal.`,
-            };
-          }
-          classData = courseMatches?.[0] || null;
-        }
-
-        if (!classData) {
-          return {
-            success: false,
-            error: `No active class found with code "${cleanedCode}". Please verify with your professor.`,
-          };
-        }
-
-        // 2. Check if student is already enrolled
-        const { data: existingEnrollment, error: existingEnrollmentError } = await supabase
-          .from('class_enrollments')
-          .select('id, status')
-          .eq('student_id', studentProfileId)
-          .eq('class_id', classData.id)
-          .maybeSingle();
-
-        if (existingEnrollmentError) {
-          return { success: false, error: getSupabaseErrorMessage(existingEnrollmentError) };
-        }
-
-        if (existingEnrollment) {
-          if (existingEnrollment.status === 'active') {
-            return {
-              success: false,
-              error: `You are already enrolled in ${classData.class_name} (${classData.course_code}).`,
-              classData,
-            };
-          }
-          // If previously dropped, re-activate enrollment
-          const { error: reactivateError } = await supabase
-            .from('class_enrollments')
-            .update({ status: 'active' })
-            .eq('id', existingEnrollment.id);
-
-          if (reactivateError) {
-            return { success: false, error: getSupabaseErrorMessage(reactivateError) };
-          }
-          return { success: true, classData };
-        }
-
-        // 3. Create enrollment in Supabase
-        const { error: enrollError } = await supabase
-          .from('class_enrollments')
-          .insert({
-            student_id: studentProfileId,
-            class_id: classData.id,
-            status: 'active',
-          });
-
-        if (enrollError) {
-            return { success: false, error: getSupabaseErrorMessage(enrollError) };
-        }
-
-        return { success: true, classData };
-      } catch (err: any) {
-        return { success: false, error: err.message || 'Unexpected error joining class' };
-      }
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) {
+      return { success: false, error: `Could not verify Supabase sign-in: ${error.message}` };
+    }
+    if (!user) {
+      return { success: false, error: 'Sign in with a valid Supabase account before joining a class.' };
     }
 
-    // Local fallback for offline/development: match against seed classes
-    const matchingSeeds = SEED_CLASSES.filter(
-      (c) =>
-        c.enrollment_code.toUpperCase() === cleanedCode ||
-        c.course_code.toUpperCase() === cleanedCode
-    );
-
-    if (matchingSeeds.length > 1) {
+    try {
+      const response = await api.joinClassByCode(cleanedCode);
+      const data = response.classData;
+      return {
+        success: true,
+        classData: {
+          id: data.id,
+          course_code: data.courseCode,
+          class_name: data.className,
+          department: data.department,
+          enrollment_code: data.enrollmentCode,
+          teacher_name: data.teacherName,
+          schedule_info: data.scheduleInfo,
+          room: data.room,
+          class_type: data.classType,
+          credits: data.credits,
+          is_active: data.isActive,
+        },
+      };
+    } catch (err) {
       return {
         success: false,
-        error: `Course code "${cleanedCode}" matches multiple classes. Use the unique enrollment code shown in the faculty portal.`,
+        error: err instanceof Error ? err.message : 'Unable to reach the enrollment service.',
       };
     }
-
-    const foundSeed = matchingSeeds[0];
-    if (!foundSeed) {
-      return {
-        success: false,
-        error: `Invalid class code "${cleanedCode}". Available test codes: CS201-DS, CS203-DB, CS205-OS, CS207-CN`,
-      };
-    }
-
-    // Check local duplicate
-    const currentList = await this.getEnrolledClasses();
-    if (currentList.some((c) => c.id === foundSeed.id)) {
-      return {
-        success: false,
-        error: `You are already enrolled in ${foundSeed.class_name} (${foundSeed.course_code}).`,
-        classData: foundSeed,
-      };
-    }
-
-    const isDS = foundSeed.course_code === 'CS201';
-    const newItem: ClassScheduleItem = {
-      id: foundSeed.id,
-      subject: foundSeed.class_name,
-      courseCode: foundSeed.course_code,
-      classType: foundSeed.class_type || 'Theory',
-      timeSlot: foundSeed.schedule_info || '10:00 - 11:30 AM',
-      room: foundSeed.room || 'Room 402',
-      iconName: isDS ? 'chart' : 'book',
-      isHighlighted: isDS,
-      status: 'Not Started',
-      teacherName: foundSeed.teacher_name,
-      department: foundSeed.department,
-      enrollmentCode: foundSeed.enrollment_code,
-    };
-
-    const updated = [...currentList, newItem];
-    await AsyncStorage.setItem(LOCAL_STORAGE_KEY_ENROLLMENTS, JSON.stringify(updated));
-
-    return { success: true, classData: foundSeed };
   }
 
   /**
@@ -453,30 +217,22 @@ class StudentService {
     classId: string,
     enrollmentId?: string
   ): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
-      try {
-        let query = supabase.from('class_enrollments').delete();
-        if (enrollmentId) {
-          query = query.eq('id', enrollmentId);
-        } else {
-          query = query.eq('student_id', studentProfileId).eq('class_id', classId);
-        }
-
-        const { error } = await query;
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true };
-      } catch (err: any) {
-        return { success: false, error: err.message };
-      }
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      return { success: false, error: 'Sign in with a valid Supabase account before leaving a class.' };
     }
-
-    // Local fallback
-    const current = await this.getEnrolledClasses();
-    const filtered = current.filter((c) => c.id !== classId);
-    await AsyncStorage.setItem(LOCAL_STORAGE_KEY_ENROLLMENTS, JSON.stringify(filtered));
-    return { success: true };
+    if (!enrollmentId) {
+      return { success: false, error: 'Enrollment details are missing. Refresh your class list and try again.' };
+    }
+    try {
+      await api.leaveClass(enrollmentId);
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unable to leave this class.',
+      };
+    }
   }
 
   /**
@@ -506,76 +262,67 @@ class StudentService {
       };
     }
 
-    // 2. Check if it's a class invitation code
-    if (isSupabaseConfigured()) {
-      try {
-        // Query class_invitations table
-        const { data: invite } = await supabase
-          .from('class_invitations')
-          .select(`
-            id,
-            is_revoked,
-            expires_at,
-            classes:class_id (*)
-          `)
-          .eq('invitation_code', trimmed)
-          .maybeSingle();
-
-        if (invite) {
-          if (invite.is_revoked) {
-            return {
-              type: 'invalid',
-              message: 'This class invitation QR has been revoked by the instructor.',
-            };
-          }
-          if (new Date(invite.expires_at).getTime() < Date.now()) {
-            return {
-              type: 'invalid',
-              message: 'This class invitation QR has expired.',
-            };
-          }
-          return {
-            type: 'class_invite',
-            classData: invite.classes as unknown as DatabaseClass,
-          };
-        }
-
-        // Also check if raw payload matches a class enrollment code
-        const { data: directClass } = await supabase
-          .from('classes')
-          .select('*')
-          .eq('enrollment_code', trimmed.toUpperCase())
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (directClass) {
-          return {
-            type: 'class_invite',
-            classData: directClass,
-          };
-        }
-      } catch (err) {
-        console.error('QR validate error:', err);
-      }
+    // 2. Check the authenticated Supabase project's invitations and classes.
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { type: 'invalid', message: 'Sign in with a valid Supabase account before scanning a class invitation.' };
     }
 
-    // Local / offline seed matching
-    if (trimmed.startsWith('INVITE-') || trimmed.includes('-DS') || trimmed.includes('-DB') || trimmed.includes('-OS') || trimmed.includes('-CN')) {
-      const codePart = trimmed.replace('INVITE-', '').replace('-FALL', '');
-      const seed = SEED_CLASSES.find(
-        (c) =>
-          c.enrollment_code.toUpperCase() === trimmed.toUpperCase() ||
-          c.enrollment_code.startsWith(codePart) ||
-          c.course_code === codePart
-      );
-
-      if (seed) {
+    const { data: invite, error: inviteError } = await supabase
+      .from('class_invitations')
+      .select('class_id, is_active, expires_at')
+      .eq('invitation_code', trimmed)
+      .maybeSingle();
+    if (inviteError) {
+      return {
+        type: 'invalid',
+        message: inviteError.code === 'PGRST205'
+          ? 'Supabase class invitation table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Could not validate invitation: ${inviteError.message}`,
+      };
+    }
+    if (invite) {
+      if (!invite.is_active) {
+        return { type: 'invalid', message: 'This class invitation QR has been revoked by the instructor.' };
+      }
+      if (new Date(invite.expires_at).getTime() < Date.now()) {
+        return { type: 'invalid', message: 'This class invitation QR has expired.' };
+      }
+      const { data: invitedClass, error: invitedClassError } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('id', invite.class_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (invitedClassError) {
         return {
-          type: 'class_invite',
-          classData: seed,
+          type: 'invalid',
+          message: invitedClassError.code === 'PGRST205'
+            ? 'Supabase classes table is missing. Run supabase/migration_000_core_schema.sql.'
+            : `Could not validate invitation class: ${invitedClassError.message}`,
         };
       }
+      if (!invitedClass) {
+        return { type: 'invalid', message: 'The class for this invitation is inactive or unavailable.' };
+      }
+      return { type: 'class_invite', classData: invitedClass };
     }
+
+    const { data: directClass, error: classError } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('enrollment_code', trimmed.toUpperCase())
+      .eq('is_active', true)
+      .maybeSingle();
+    if (classError) {
+      return {
+        type: 'invalid',
+        message: classError.code === 'PGRST205'
+          ? 'Supabase classes table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Could not validate class code: ${classError.message}`,
+      };
+    }
+    if (directClass) return { type: 'class_invite', classData: directClass };
 
     return {
       type: 'invalid',

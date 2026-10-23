@@ -59,11 +59,14 @@ import {
 } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Linking from 'expo-linking';
+import * as studentApi from './src/services/api';
+import { authErrorMessage } from './src/services/authErrors';
+import { registerStudent } from './src/services/registration';
+import { EmailVerificationForm } from './src/components/EmailVerificationForm';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -167,66 +170,8 @@ export interface DatabaseClass {
 // ============================================================================
 // 3. BACKEND CLIENTS & SERVICES (SUPABASE & CLOUDINARY)
 // ============================================================================
-const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://krdykejphzdnatxekerr.supabase.co';
-const SUPABASE_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  'sb_publishable_bRs6RNLcxXULsvopEbP3kw_X8vIUBBP';
-
-const storageAdapter = {
-  getItem: async (key: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
-      }
-      return await AsyncStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  setItem: async (key: string, value: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, value);
-        return;
-      }
-      await AsyncStorage.setItem(key, value);
-    } catch {}
-  },
-  removeItem: async (key: string) => {
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      await AsyncStorage.removeItem(key);
-    } catch {}
-  },
-};
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    storage: storageAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-
-export const isSupabaseConfigured = () => {
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL || SUPABASE_URL;
-  const key =
-    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-    SUPABASE_KEY;
-  return (
-    Boolean(url) &&
-    url !== 'https://xyzcompany.supabase.co' &&
-    Boolean(key) &&
-    !key.includes('mock-key')
-  );
-};
+import { supabase, isSupabaseConfigured } from './src/services/supabase';
+export { supabase, isSupabaseConfigured };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
@@ -304,89 +249,43 @@ export const uploadImageToCloudinary = async (
   return data.secure_url;
 };
 
-// Seed classes for development / test enrollments
-export const SEED_CLASSES: DatabaseClass[] = [
-  {
-    id: '11111111-1111-1111-1111-111111111111',
-    course_code: 'CS201',
-    class_name: 'Data Structures',
-    department: 'Computer Science',
-    enrollment_code: 'CS201-DS',
-    teacher_name: 'Prof. R. Sengupta',
-    schedule_info: 'Today • 10:00 - 11:30 AM',
-    room: 'Lab 3B • Room 402',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '22222222-2222-2222-2222-222222222222',
-    course_code: 'CS203',
-    class_name: 'Database Management Systems',
-    department: 'Computer Science',
-    enrollment_code: 'CS203-DB',
-    teacher_name: 'Dr. Ananya Roy',
-    schedule_info: 'Today • 11:45 - 01:15 PM',
-    room: 'Hall A • Room 204',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '33333333-3333-3333-3333-333333333333',
-    course_code: 'CS205',
-    class_name: 'Operating Systems',
-    department: 'Computer Science',
-    enrollment_code: 'CS205-OS',
-    teacher_name: 'Prof. Vikram Mehta',
-    schedule_info: 'Today • 02:00 - 03:30 PM',
-    room: 'Seminar 1 • Room 102',
-    class_type: 'Theory',
-    credits: 4,
-    is_active: true,
-  },
-  {
-    id: '44444444-4444-4444-4444-444444444444',
-    course_code: 'CS207',
-    class_name: 'Computer Networks',
-    department: 'Computer Science',
-    enrollment_code: 'CS207-CN',
-    teacher_name: 'Dr. Priya Sharma',
-    schedule_info: 'Today • 03:45 - 05:15 PM',
-    room: 'Lab 1A • Room 301',
-    class_type: 'Practical',
-    credits: 4,
-    is_active: true,
-  },
-];
-
 class StudentService {
   async getProfile(): Promise<StudentProfile | null> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
-        const { data } = await supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
-        if (data) {
-          return {
-            id: data.id,
-            userId: data.user_id,
-            email: data.email || user.email || '',
-            name: data.full_name,
-            firstName: data.first_name || data.full_name.split(' ')[0],
-            degree: data.degree || 'Computer Science',
-            rollNumber: data.roll_number,
-            semester: data.semester || '3rd Semester',
-            avatarUrl: data.avatar_url || '',
-            attendancePercent: 0,
-            totalClasses: 0,
-            presentToday: 0,
-          };
-        }
-      } catch {}
+    if (!isSupabaseConfigured()) return null;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) throw new Error(`Authentication failed: ${authError.message}`);
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error) {
+      throw new Error(
+        error.code === 'PGRST205'
+          ? 'Supabase profile table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Failed to load your profile: ${error.message}`
+      );
     }
-    const cached = await AsyncStorage.getItem('app_student_profile');
-    return cached ? JSON.parse(cached) : null;
+    if (!data || !data.full_name?.trim() || !data.roll_number?.trim() || !data.degree?.trim() || !data.semester?.trim()) return null;
+
+    const profile: StudentProfile = {
+      id: data.id,
+      userId: data.user_id,
+      email: data.email || user.email || '',
+      name: data.full_name,
+      firstName: data.first_name || data.full_name.split(' ')[0],
+      degree: data.degree || 'Computer Science',
+      rollNumber: data.roll_number,
+      semester: data.semester || '3rd Semester',
+      avatarUrl: data.avatar_url || '',
+      attendancePercent: 0,
+      totalClasses: 0,
+      presentToday: 0,
+    };
+    await AsyncStorage.setItem('app_student_profile', JSON.stringify(profile));
+    return profile;
   }
 
   async saveProfile(profileData: {
@@ -396,171 +295,144 @@ class StudentService {
     semester: string;
     avatarUrl?: string;
   }): Promise<{ success: boolean; profile?: StudentProfile; error?: string }> {
-    const firstName = profileData.fullName.trim().split(' ')[0];
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return { success: false, error: 'User not signed in' };
-        const { data, error } = await supabase
-          .from('profiles')
-          .upsert(
-            {
-              user_id: user.id,
-              email: user.email || '',
-              full_name: profileData.fullName.trim(),
-              first_name: firstName,
-              roll_number: profileData.rollNumber.trim().toUpperCase(),
-              degree: profileData.department.trim(),
-              semester: profileData.semester.trim(),
-              avatar_url: profileData.avatarUrl || null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'user_id' }
-          )
-          .select()
-          .single();
-        if (error) return { success: false, error: error.message };
-        const profile: StudentProfile = {
-          id: data.id,
-          userId: data.user_id,
-          email: data.email,
-          name: data.full_name,
-          firstName: data.first_name,
-          degree: data.degree,
-          rollNumber: data.roll_number,
-          semester: data.semester,
-          avatarUrl: data.avatar_url || '',
-          attendancePercent: 0,
-          totalClasses: 0,
-          presentToday: 0,
-        };
-        await AsyncStorage.setItem('app_student_profile', JSON.stringify(profile));
-        return { success: true, profile };
-      } catch (err: any) {
-        return { success: false, error: err.message };
-      }
+    if (!isSupabaseConfigured()) {
+      return { success: false, error: 'Supabase is not configured. Sign in with a real Supabase account to save your profile.' };
     }
-    const localProfile: StudentProfile = {
-      id: 'local-student',
-      name: profileData.fullName.trim(),
-      firstName,
-      degree: profileData.department.trim(),
-      rollNumber: profileData.rollNumber.trim().toUpperCase(),
-      semester: profileData.semester.trim(),
-      avatarUrl: profileData.avatarUrl || '',
-      attendancePercent: 0,
-      totalClasses: 0,
-      presentToday: 0,
-    };
-    await AsyncStorage.setItem('app_student_profile', JSON.stringify(localProfile));
-    return { success: true, profile: localProfile };
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return { success: false, error: 'Sign in with a valid Supabase account before saving your profile.' };
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            email: user.email || '',
+            full_name: profileData.fullName.trim(),
+            first_name: profileData.fullName.trim().split(' ')[0],
+            roll_number: profileData.rollNumber.trim().toUpperCase(),
+            degree: profileData.department.trim(),
+            semester: profileData.semester.trim(),
+            avatar_url: profileData.avatarUrl || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        )
+        .select()
+        .single();
+      if (error) {
+        return {
+          success: false,
+          error: error.code === 'PGRST205'
+            ? 'Supabase profile table is missing. Run supabase/migration_000_core_schema.sql.'
+            : error.code === '23505' && /roll_number/.test(error.message)
+              ? 'This roll number is already linked to another account. Use your original account or enter your own roll number.'
+              : error.message,
+        };
+      }
+      const profile: StudentProfile = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        name: data.full_name,
+        firstName: data.first_name,
+        degree: data.degree,
+        rollNumber: data.roll_number,
+        semester: data.semester,
+        avatarUrl: data.avatar_url || '',
+        attendancePercent: 0,
+        totalClasses: 0,
+        presentToday: 0,
+      };
+      await AsyncStorage.setItem('app_student_profile', JSON.stringify(profile));
+      return { success: true, profile };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Failed to save profile.' };
+    }
   }
 
-  async getEnrolledClasses(studentProfileId?: string): Promise<ClassScheduleItem[]> {
-    if (isSupabaseConfigured() && studentProfileId) {
-      try {
-        const { data } = await supabase
-          .from('class_enrollments')
-          .select('id, status, classes:class_id (*)')
-          .eq('student_id', studentProfileId)
-          .eq('status', 'active');
-        if (data) {
-          return data.filter((d: any) => d.classes).map((d: any) => {
-            const cls = d.classes as DatabaseClass;
-            const isDS = cls.course_code === 'CS201';
-            return {
-              id: cls.id,
-              enrollmentId: d.id,
-              subject: cls.class_name,
-              courseCode: cls.course_code,
-              classType: cls.class_type || 'Theory',
-              timeSlot: cls.schedule_info || '10:00 - 11:30 AM',
-              room: cls.room || 'Room 402',
-              iconName: isDS ? 'chart' : 'book',
-              isHighlighted: isDS,
-              status: 'Not Started',
-              teacherName: cls.teacher_name,
-              department: cls.department,
-              enrollmentCode: cls.enrollment_code,
-            };
-          });
-        }
-      } catch {}
-    }
-    const cached = await AsyncStorage.getItem('app_enrolled_classes');
-    return cached ? JSON.parse(cached) : [];
+  async getEnrolledClasses(_studentProfileId?: string): Promise<ClassScheduleItem[]> {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw new Error(`Could not verify Supabase sign-in: ${error.message}`);
+    if (!user) throw new Error('Sign in with a valid Supabase account to view enrolled classes.');
+
+    const enrolled = await studentApi.getMyEnrolledClasses();
+    const classes: ClassScheduleItem[] = enrolled.map((item) => ({
+      id: item.id,
+      enrollmentId: item.enrollmentId,
+      subject: item.subject,
+      courseCode: item.courseCode,
+      classType: item.classType || 'Theory',
+      timeSlot: item.timeSlot || '',
+      room: item.room || '',
+      iconName: item.courseCode === 'CS201' ? 'chart' : 'book',
+      isHighlighted: item.courseCode === 'CS201',
+      status: 'Not Started',
+      teacherName: item.teacherName,
+      department: item.department,
+      enrollmentCode: item.enrollmentCode,
+    }));
+    await AsyncStorage.setItem('app_enrolled_classes', JSON.stringify(classes));
+    return classes;
   }
 
   async joinClassByCode(
-    studentProfileId: string,
+    _studentProfileId: string,
     enrollmentCode: string
   ): Promise<{ success: boolean; classData?: DatabaseClass; error?: string }> {
     const code = enrollmentCode.trim().toUpperCase();
     if (!code) return { success: false, error: 'Please enter a class code.' };
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: cls } = await supabase.from('classes').select('*').eq('enrollment_code', code).eq('is_active', true).maybeSingle();
-        if (!cls) return { success: false, error: `Invalid class code "${code}".` };
-        const { data: existing } = await supabase.from('class_enrollments').select('id, status').eq('student_id', studentProfileId).eq('class_id', cls.id).maybeSingle();
-        if (existing) {
-          if (existing.status === 'active') {
-            return { success: false, error: `You are already enrolled in ${cls.class_name}.`, classData: cls };
-          }
-          await supabase.from('class_enrollments').update({ status: 'active' }).eq('id', existing.id);
-          return { success: true, classData: cls };
-        }
-        await supabase.from('class_enrollments').insert({ student_id: studentProfileId, class_id: cls.id, status: 'active' });
-        return { success: true, classData: cls };
-      } catch (err: any) {
-        return { success: false, error: err.message };
-      }
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) {
+      return { success: false, error: `Could not verify Supabase sign-in: ${error.message}` };
+    }
+    if (!user) {
+      return { success: false, error: 'Sign in with a valid Supabase account before joining a class.' };
     }
 
-    const found = SEED_CLASSES.find((c) => c.enrollment_code === code);
-    if (!found) {
-      return { success: false, error: `Invalid code. Available: CS201-DS, CS203-DB, CS205-OS, CS207-CN` };
+    try {
+      const response = await studentApi.joinClassByCode(code);
+      const data = response.classData;
+      return {
+        success: true,
+        classData: {
+          id: data.id,
+          course_code: data.courseCode,
+          class_name: data.className,
+          department: data.department,
+          enrollment_code: data.enrollmentCode,
+          teacher_name: data.teacherName,
+          schedule_info: data.scheduleInfo,
+          room: data.room,
+          class_type: data.classType,
+          credits: data.credits,
+          is_active: data.isActive,
+        },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unable to reach the enrollment service.',
+      };
     }
-    const current = await this.getEnrolledClasses();
-    if (current.some((c) => c.id === found.id)) {
-      return { success: false, error: `Already enrolled in ${found.class_name}.`, classData: found };
-    }
-    const isDS = found.course_code === 'CS201';
-    const newItem: ClassScheduleItem = {
-      id: found.id,
-      subject: found.class_name,
-      courseCode: found.course_code,
-      classType: found.class_type || 'Theory',
-      timeSlot: found.schedule_info || '10:00 - 11:30 AM',
-      room: found.room || 'Room 402',
-      iconName: isDS ? 'chart' : 'book',
-      isHighlighted: isDS,
-      status: 'Not Started',
-      teacherName: found.teacher_name,
-      department: found.department,
-      enrollmentCode: found.enrollment_code,
-    };
-    const updated = [...current, newItem];
-    await AsyncStorage.setItem('app_enrolled_classes', JSON.stringify(updated));
-    return { success: true, classData: found };
   }
 
-  async leaveClass(studentProfileId: string, classId: string, enrollmentId?: string): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
-      try {
-        let query = supabase.from('class_enrollments').delete();
-        if (enrollmentId) query = query.eq('id', enrollmentId);
-        else query = query.eq('student_id', studentProfileId).eq('class_id', classId);
-        await query;
-        return { success: true };
-      } catch (err: any) {
-        return { success: false, error: err.message };
-      }
+  async leaveClass(_studentProfileId: string, _classId: string, enrollmentId?: string): Promise<{ success: boolean; error?: string }> {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      return { success: false, error: 'Sign in with a valid Supabase account before leaving a class.' };
     }
-    const current = await this.getEnrolledClasses();
-    const filtered = current.filter((c) => c.id !== classId);
-    await AsyncStorage.setItem('app_enrolled_classes', JSON.stringify(filtered));
-    return { success: true };
+    if (!enrollmentId) {
+      return { success: false, error: 'Enrollment details are missing. Refresh your class list and try again.' };
+    }
+    try {
+      await studentApi.leaveClass(enrollmentId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unable to leave this class.' };
+    }
   }
 
   async validateQRPayload(payload: string): Promise<{
@@ -597,22 +469,66 @@ class StudentService {
       };
     }
 
-    if (
-      trimmed.startsWith('INVITE-') ||
-      trimmed.includes('-DS') ||
-      trimmed.includes('-DB') ||
-      trimmed.includes('-OS') ||
-      trimmed.includes('-CN')
-    ) {
-      const codePart = trimmed.replace('INVITE-', '').replace('-FALL', '');
-      const seed = SEED_CLASSES.find(
-        (c) =>
-          c.enrollment_code === trimmed.toUpperCase() ||
-          c.enrollment_code.startsWith(codePart) ||
-          c.course_code === codePart
-      );
-      if (seed) return { type: 'class_invite', classData: seed };
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { type: 'invalid', message: 'Sign in with a valid Supabase account before scanning a class invitation.' };
     }
+
+    const { data: invite, error: inviteError } = await supabase
+      .from('class_invitations')
+      .select('class_id, is_active, expires_at')
+      .eq('invitation_code', trimmed)
+      .maybeSingle();
+    if (inviteError) {
+      return {
+        type: 'invalid',
+        message: inviteError.code === 'PGRST205'
+          ? 'Supabase class invitation table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Could not validate invitation: ${inviteError.message}`,
+      };
+    }
+    if (invite) {
+      if (!invite.is_active) {
+        return { type: 'invalid', message: 'This class invitation QR has been revoked by the instructor.' };
+      }
+      if (new Date(invite.expires_at).getTime() < Date.now()) {
+        return { type: 'invalid', message: 'This class invitation QR has expired.' };
+      }
+      const { data: invitedClass, error: invitedClassError } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('id', invite.class_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (invitedClassError) {
+        return {
+          type: 'invalid',
+          message: invitedClassError.code === 'PGRST205'
+            ? 'Supabase classes table is missing. Run supabase/migration_000_core_schema.sql.'
+            : `Could not validate invitation class: ${invitedClassError.message}`,
+        };
+      }
+      if (!invitedClass) {
+        return { type: 'invalid', message: 'The class for this invitation is inactive or unavailable.' };
+      }
+      return { type: 'class_invite', classData: invitedClass };
+    }
+
+    const { data: directClass, error: classError } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('enrollment_code', trimmed.toUpperCase())
+      .eq('is_active', true)
+      .maybeSingle();
+    if (classError) {
+      return {
+        type: 'invalid',
+        message: classError.code === 'PGRST205'
+          ? 'Supabase classes table is missing. Run supabase/migration_000_core_schema.sql.'
+          : `Could not validate class code: ${classError.message}`,
+      };
+    }
+    if (directClass) return { type: 'class_invite', classData: directClass };
     return { type: 'invalid', message: 'Unrecognized QR code. Please scan a valid class QR.' };
   }
 }
@@ -1060,13 +976,13 @@ export const QRScannerModal: React.FC<{
 
   const confirmAttendanceSubmission = async () => {
     if (!detectedAttendance) return;
+    if (!isSupabaseConfigured()) {
+      Alert.alert('Supabase Not Configured', 'Configure Supabase before submitting attendance.');
+      return;
+    }
     setSubmittingAttendance(true);
     try {
-      if (isSupabaseConfigured()) {
-        await submitAttendanceApi({ qrToken: detectedAttendance.token });
-      } else {
-        await new Promise((r) => setTimeout(r, 600));
-      }
+      await submitAttendanceApi({ qrToken: detectedAttendance.token });
       setAttendanceSuccess(true);
       Alert.alert(
         'Check-In Submitted!',
@@ -1268,65 +1184,62 @@ export const OnboardingScreen: React.FC<{ onGetStarted: () => void }> = ({ onGet
 };
 
 // B. LOGIN SCREEN
-export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => void; onNavigateRegister: () => void }> = ({
+export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => void; onNavigateRegister: () => void; initialError?: string; onClearError?: () => void }> = ({
   onBack,
   onLoginSuccess,
   onNavigateRegister,
+  initialError,
+  onClearError,
 }) => {
-  const [identifier, setIdentifier] = useState('aryan.sharma@cs.univ.edu');
-  const [password, setPassword] = useState('password123');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const visibleError = errorMessage || initialError;
 
   const handleLogin = async () => {
     setErrorMessage(null);
+    onClearError?.();
     if (!identifier.trim() || !password.trim()) {
-      setErrorMessage('Please enter your email/USN and password.');
+      setErrorMessage('Please enter your email address and password.');
+      return;
+    }
+    if (!identifier.trim().includes('@')) {
+      setErrorMessage('Sign in with the email address registered to your Supabase account.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setErrorMessage('Supabase is not configured. Add the project URL and publishable key before signing in.');
       return;
     }
     setLoading(true);
-    if (isSupabaseConfigured()) {
-      try {
-        let emailToUse = identifier.trim();
-        if (!emailToUse.includes('@')) {
-          const { data } = await supabase.from('profiles').select('email').eq('roll_number', emailToUse.toUpperCase()).maybeSingle();
-          if (data?.email) emailToUse = data.email;
-        }
-        const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password: password.trim() });
-        setLoading(false);
-        if (error) {
-          // If demo student credentials or database tables/users not yet seeded, allow fallback to demo student session
-          const isDemoStudent =
-            emailToUse.toLowerCase().includes('aryan') ||
-            emailToUse.toUpperCase() === 'CS24123' ||
-            emailToUse.toLowerCase().includes('student');
-
-          if (isDemoStudent) {
-            console.warn('Supabase auth error for demo student, falling back to demo session:', error.message);
-            onLoginSuccess();
-          } else {
-            setErrorMessage(`${error.message}. (Tip: Use aryan.sharma@cs.univ.edu / password123 to log in immediately)`);
-          }
-        } else {
-          onLoginSuccess();
-        }
-      } catch (err: any) {
-        setLoading(false);
-        setErrorMessage(err.message || 'Authentication error');
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: identifier.trim(),
+        password,
+      });
+      if (error) {
+        setErrorMessage(authErrorMessage(error));
+        return;
       }
-    } else {
-      setTimeout(() => {
-        setLoading(false);
-        onLoginSuccess();
-      }, 350);
+      if (!data.session) {
+        setErrorMessage('Supabase did not create an authenticated session. Confirm your email and try again.');
+        return;
+      }
+      onLoginSuccess();
+    } catch (err) {
+      setErrorMessage(authErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
+    setErrorMessage(null);
+    onClearError?.();
     if (!isSupabaseConfigured()) {
-      Alert.alert('Demo Mode', 'Supabase is not configured. Entering demo session.');
-      onLoginSuccess();
+      Alert.alert('Supabase Not Configured', 'Add the Supabase project URL and publishable key before signing in.');
       return;
     }
 
@@ -1346,13 +1259,15 @@ export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => v
 
       if (error) {
         setGoogleLoading(false);
-        Alert.alert('Google Sign-In Error', error.message);
+        setErrorMessage(authErrorMessage(error));
         return;
       }
 
       if (data?.url) {
         const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
         if (result.type === 'success' && result.url) {
+          const callbackError = new URLSearchParams(result.url.split('#')[1] || result.url.split('?')[1] || '').get('error_description');
+          if (callbackError) throw new Error(callbackError);
           const parsed = Linking.parse(result.url);
           const params = (parsed.queryParams || {}) as Record<string, any>;
           let accessToken = params.access_token as string | undefined;
@@ -1367,20 +1282,22 @@ export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => v
           }
 
           if (accessToken && refreshToken) {
-            await supabase.auth.setSession({
+            const { error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             });
+            if (sessionError) throw sessionError;
             setGoogleLoading(false);
             onLoginSuccess();
             return;
           }
+          throw new Error('Google did not return an authenticated session. Please try again.');
         }
       }
       setGoogleLoading(false);
     } catch (err: any) {
       setGoogleLoading(false);
-      Alert.alert('Google Sign-In Failed', err.message || 'An error occurred during sign-in.');
+      setErrorMessage(authErrorMessage(err));
     }
   };
 
@@ -1394,10 +1311,10 @@ export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => v
         <Text style={styles.authSubtitle}>Login to your student account</Text>
 
         <View style={styles.formSection}>
-          {errorMessage && (
+          {visibleError && (
             <View style={styles.errorBanner}>
               <AlertCircle size={16} color="#F87171" style={{ marginRight: 8, marginTop: 1 }} />
-              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+              <Text style={styles.errorBannerText}>{visibleError}</Text>
             </View>
           )}
 
@@ -1428,10 +1345,12 @@ export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => v
           </View>
 
           <AuthInput
-            label="Email or Roll Number"
-            placeholder="student@univ.edu / CS24123"
+            label="Email Address"
+            placeholder="student@univ.edu"
             value={identifier}
             onChangeText={setIdentifier}
+            keyboardType="email-address"
+            autoCapitalize="none"
             icon={<User size={20} color="#9AB9EC" />}
           />
           <AuthInput
@@ -1467,36 +1386,45 @@ export const RegisterScreen: React.FC<{ onBack: () => void; onRegistered: (email
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const showMessage = (_title: string, text: string) => setMessage(text);
 
   const handleRegister = async () => {
+    setMessage('');
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Required', 'Please enter your email and password.');
+      showMessage('Required', 'Please enter your email and password.');
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Password Length', 'Password must be at least 6 characters.');
+      showMessage('Password Length', 'Password must be at least 6 characters.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Mismatch', 'Passwords do not match.');
+      showMessage('Mismatch', 'Passwords do not match.');
       return;
     }
     setLoading(true);
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase.auth.signUp({ email: email.trim(), password: password.trim() });
+        const result = await registerStudent(email, password);
+        if (result.status === 'verified') {
+          onRegistered(result.email);
+        } else if (result.status === 'existing_account') {
+          showMessage('Account Already Registered', 'An account already exists. Sign in with its password, or select Verify existing email if it is still unconfirmed.');
+        } else {
+          setPendingEmail(result.email);
+          setPassword('');
+          setConfirmPassword('');
+        }
         setLoading(false);
-        if (error) Alert.alert('Registration Error', error.message);
-        else onRegistered(email.trim());
       } catch (err: any) {
         setLoading(false);
-        Alert.alert('Error', err.message);
+        showMessage('Error', authErrorMessage(err));
       }
     } else {
-      setTimeout(() => {
-        setLoading(false);
-        onRegistered(email.trim());
-      }, 350);
+      setLoading(false);
+      showMessage('Supabase Not Configured', 'Add the Supabase project URL and publishable key before creating an account.');
     }
   };
 
@@ -1506,10 +1434,20 @@ export const RegisterScreen: React.FC<{ onBack: () => void; onRegistered: (email
         <TouchableOpacity onPress={onBack} style={styles.backArrow}>
           <ArrowLeft size={24} color="#9AB9EC" strokeWidth={2.2} />
         </TouchableOpacity>
-        <Text style={styles.authTitle}>Create Account</Text>
-        <Text style={styles.authSubtitle}>Enter your institutional email & password</Text>
+        <Text style={styles.authTitle}>{pendingEmail ? 'Verify Your Email' : 'Create Account'}</Text>
+        <Text style={styles.authSubtitle}>{pendingEmail ? 'Confirm your student account' : 'Enter your institutional email & password'}</Text>
 
         <View style={styles.formSection}>
+          {!!message && <View style={styles.errorBanner}><Text style={styles.errorBannerText}>{message}</Text></View>}
+          {pendingEmail ? (
+            <EmailVerificationForm
+              key={pendingEmail}
+              email={pendingEmail}
+              onVerified={() => onRegistered(pendingEmail)}
+              onChangeEmail={() => { setPendingEmail(''); setMessage(''); }}
+            />
+          ) : (
+          <>
           <AuthInput
             label="Email Address"
             placeholder="student@univ.edu"
@@ -1538,6 +1476,22 @@ export const RegisterScreen: React.FC<{ onBack: () => void; onRegistered: (email
           <TouchableOpacity style={styles.primaryActionBtn} onPress={handleRegister} disabled={loading}>
             {loading ? <ActivityIndicator size="small" color="#061522" /> : <Text style={styles.primaryActionText}>Create Account</Text>}
           </TouchableOpacity>
+          <TouchableOpacity
+            disabled={loading}
+            onPress={() => {
+              if (!email.trim().includes('@')) { setMessage('Enter your registered email address first.'); return; }
+              setMessage('');
+              setPassword('');
+              setConfirmPassword('');
+              setPendingEmail(email.trim());
+            }}
+            style={{ paddingVertical: 16, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#9AB9EC', fontWeight: '600' }}>Verify existing email</Text>
+          </TouchableOpacity>
+          </>
+          )}
+
         </View>
 
         <View style={styles.authFooter}>
@@ -1552,17 +1506,19 @@ export const RegisterScreen: React.FC<{ onBack: () => void; onRegistered: (email
 };
 
 // D. PROFILE SETUP SCREEN (STEP-BY-STEP QUESTIONNAIRE - NEXT BUTTON 100% FIXED)
-export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: () => void }> = ({
+export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: () => void; onChangeAccount?: () => void }> = ({
   initialEmail,
   onComplete,
+  onChangeAccount,
 }) => {
   const [step, setStep] = useState(1);
-  const [fullName, setFullName] = useState('Aryan Sharma');
-  const [usn, setUsn] = useState('CS24123');
+  const [fullName, setFullName] = useState('');
+  const [usn, setUsn] = useState('');
   const [department, setDepartment] = useState('Computer Science');
   const [semester, setSemester] = useState('3rd');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
 
   const departments = [
     'Computer Science',
@@ -1580,13 +1536,14 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
   // NEXT BUTTON HANDLER (SYNCHRONOUS & RELIABLE - NEVER DROPS CLICKS)
   const goNext = () => {
     if (saving) return;
+    setSetupError('');
 
     if (step === 2 && !fullName.trim()) {
-      Alert.alert('Required Field', 'Please enter your full name to proceed.');
+      setSetupError('Please enter your full name to proceed.');
       return;
     }
     if (step === 3 && !usn.trim()) {
-      Alert.alert('Required Field', 'Please enter your USN / Roll number to proceed.');
+      setSetupError('Please enter your USN / Roll number to proceed.');
       return;
     }
     if (step === 4 && !department) {
@@ -1629,22 +1586,31 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
   };
 
   const handleFinish = async () => {
+    setSetupError('');
     setSaving(true);
     try {
-      await studentService.saveProfile({
+      const result = await studentService.saveProfile({
         fullName: fullName.trim(),
         rollNumber: usn.trim().toUpperCase(),
         department: department.trim(),
         semester: `${semester} Semester`,
         avatarUrl: photoUri || '',
       });
+      if (!result.success) {
+        setSetupError(result.error || 'Your profile could not be saved.');
+        return;
+      }
+      if (Platform.OS === 'web') {
+        onComplete();
+      } else {
+        Alert.alert('Profile Complete! 🎉', 'Your campus dashboard is configured.', [
+          { text: 'Open Dashboard', onPress: onComplete },
+        ]);
+      }
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Your profile could not be saved.');
+    } finally {
       setSaving(false);
-      Alert.alert('Profile Complete! 🎉', 'Your campus dashboard is configured.', [
-        { text: 'Open Dashboard', onPress: onComplete },
-      ]);
-    } catch {
-      setSaving(false);
-      onComplete();
     }
   };
 
@@ -1684,6 +1650,9 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
           </Text>
         </View>
 
+        {!!initialEmail && <Text style={{ color: '#8EA5C2', fontSize: 12, marginBottom: 10 }}>Signed in as {initialEmail}</Text>}
+        {onChangeAccount && <TouchableOpacity disabled={saving} onPress={onChangeAccount} style={{ paddingVertical: 8, marginBottom: 8 }}><Text style={{ color: '#9AB9EC', fontSize: 13 }}>Use another account</Text></TouchableOpacity>}
+        {!!setupError && <View style={styles.errorBanner}><Text accessibilityRole="alert" style={styles.errorBannerText}>{setupError}</Text></View>}
         {/* Step Content */}
         <View style={styles.setupContent}>
           {step === 1 && (
@@ -1828,6 +1797,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [classes, setClasses] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modals
   const [joinModalVisible, setJoinModalVisible] = useState(false);
@@ -1838,27 +1808,20 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
   const loadData = useCallback(async () => {
     try {
       const profile = await studentService.getProfile();
-      if (profile) {
-        setStudent(profile);
-        const enrolled = await studentService.getEnrolledClasses(profile.id);
-        setClasses(enrolled);
-      } else {
-        const fallback: StudentProfile = {
-          id: 'dev-student',
-          name: 'Aryan Sharma',
-          firstName: 'Aryan',
-          degree: 'B.Tech Computer Science',
-          rollNumber: 'CS24123',
-          semester: '3rd Semester',
-          avatarUrl: 'assets/aryan.jpg',
-          attendancePercent: 0,
-          totalClasses: 0,
-          presentToday: 0,
-        };
-        setStudent(fallback);
-        const enrolled = await studentService.getEnrolledClasses(fallback.id);
-        setClasses(enrolled);
+      if (!profile) {
+        setStudent(null);
+        setClasses([]);
+        setLoadError('Sign in and complete your student profile to use the class dashboard.');
+        return;
       }
+      setStudent(profile);
+      const enrolled = await studentService.getEnrolledClasses(profile.id);
+      setClasses(enrolled);
+      setLoadError(null);
+    } catch (err) {
+      setStudent(null);
+      setClasses([]);
+      setLoadError(err instanceof Error ? err.message : 'Unable to load your class dashboard.');
     } finally {
       setLoading(false);
     }
@@ -1868,18 +1831,25 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
     loadData();
   }, [loadData]);
 
-  const activeStudent = student || {
-    id: 'temp',
-    name: 'Aryan Sharma',
-    firstName: 'Aryan',
-    degree: 'Computer Science',
-    rollNumber: 'CS24123',
-    semester: '3rd Semester',
-    avatarUrl: '',
-    attendancePercent: 0,
-    totalClasses: 0,
-    presentToday: 0,
-  };
+  if (!student) {
+    return (
+      <AppBackground variant="dashboard">
+        <View style={styles.centerContainer}>
+          {loading && <ActivityIndicator size="large" color="#9AB9EC" />}
+          <Text style={{ color: Colors.textSecondary, textAlign: 'center', margin: 20 }}>
+            {loading ? 'Loading your student profile...' : loadError}
+          </Text>
+          {!loading && (
+            <TouchableOpacity style={styles.emptyJoinAction} onPress={onLogout}>
+              <Text style={styles.emptyJoinText}>Return to Sign In</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </AppBackground>
+    );
+  }
+
+  const activeStudent = student;
 
   return (
     <AppBackground variant="dashboard">
@@ -1934,7 +1904,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
               <Plus size={16} color="#061522" style={{ marginRight: 6 }} />
               <Text style={styles.emptyJoinText}>Join Your First Class</Text>
             </TouchableOpacity>
-            <Text style={styles.testCodesNote}>TEST CODES: CS201-DS • CS203-DB • CS205-OS • CS207-CN</Text>
+            <Text style={styles.testCodesNote}>Use an active class enrollment code provided by your instructor.</Text>
           </View>
         ) : (
           <View style={{ gap: 12 }}>
@@ -2434,34 +2404,61 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<TabName>('home');
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const signingOut = useRef(false);
 
   useEffect(() => {
-    const init = async () => {
+    let active = true;
+    let revision = 0;
+    let routedUser: string | undefined;
+    const restoreSession = async () => {
+      const request = ++revision;
       try {
-        if (isSupabaseConfigured()) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            const profile = await studentService.getProfile();
-            if (profile?.name) setCurrentScreen('main');
-            else setCurrentScreen('profile_setup');
-          }
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!session?.user) return;
+        if (routedUser === session.user.id) return;
+        const profile = await studentService.getProfile();
+        if (!active || request !== revision) return;
+        routedUser = session.user.id;
+        setRegisteredEmail(session.user.email || '');
+        setCurrentScreen(profile ? 'main' : 'profile_setup');
+      } catch (error) {
+        if (active && request === revision) {
+          setCurrentScreen('login');
+          setAuthError(authErrorMessage(error));
         }
-      } catch {}
-      setCheckingAuth(false);
+      } finally {
+        if (active && request === revision) setCheckingAuth(false);
+      }
     };
-    init();
-
-    if (isSupabaseConfigured()) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) setCurrentScreen('main');
-        else if (event === 'SIGNED_OUT') setCurrentScreen('login');
-      });
-      return () => subscription.unsubscribe();
-    }
+    // Never await Supabase calls inside its auth callback (the auth lock is held).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setAuthError(signingOut.current ? '' : 'Your session has expired. Please sign in again.');
+        revision++;
+        routedUser = undefined;
+        setRegisteredEmail('');
+        setCurrentTab('home');
+        setCurrentScreen('login');
+        setCheckingAuth(false);
+        void AsyncStorage.multiRemove(['app_student_profile', 'app_enrolled_classes', 'class_attendance_student_profile', 'class_attendance_enrolled_classes']);
+      } else if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
+        setTimeout(() => { if (active) void restoreSession(); }, 0);
+      }
+    });
+    void restoreSession();
+    return () => { active = false; revision++; subscription.unsubscribe(); };
   }, []);
 
   const handleLogout = async () => {
-    if (isSupabaseConfigured()) await supabase.auth.signOut();
+    signingOut.current = true;
+    const { error } = await supabase.auth.signOut();
+    signingOut.current = false;
+    if (error) {
+      Alert.alert('Sign-Out Error', authErrorMessage(error));
+      return;
+    }
     setCurrentScreen('login');
   };
 
@@ -2481,7 +2478,10 @@ export default function App() {
         return (
           <LoginScreen
             onBack={() => setCurrentScreen('onboarding')}
-            onLoginSuccess={() => setCurrentScreen('main')}
+            // Successful auth is routed by the shared auth-state subscription.
+            onLoginSuccess={() => {}}
+            initialError={authError}
+            onClearError={() => setAuthError('')}
             onNavigateRegister={() => setCurrentScreen('register')}
           />
         );
@@ -2491,7 +2491,7 @@ export default function App() {
             onBack={() => setCurrentScreen('login')}
             onRegistered={(email) => {
               setRegisteredEmail(email);
-              setCurrentScreen('profile_setup');
+              // The auth-state subscription verifies the session and profile.
             }}
           />
         );
@@ -2499,6 +2499,7 @@ export default function App() {
         return (
           <ProfileSetupScreen
             initialEmail={registeredEmail}
+            onChangeAccount={handleLogout}
             onComplete={() => setCurrentScreen('main')}
           />
         );

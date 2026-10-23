@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.class_invitations (
     class_id UUID NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
     invitation_code TEXT UNIQUE NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
-    is_revoked BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -92,7 +92,7 @@ CREATE POLICY "Users can read own profile"
 CREATE POLICY "Users can insert own profile"
     ON public.profiles FOR INSERT
     TO authenticated
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (auth.uid() = user_id AND role = 'student');
 
 -- Users can update only their own profile
 CREATE POLICY "Users can update own profile"
@@ -120,7 +120,21 @@ CREATE POLICY "Students can view own enrollments"
 CREATE POLICY "Students can enroll themselves"
     ON public.class_enrollments FOR INSERT
     TO authenticated
-    WITH CHECK (student_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid()));
+    WITH CHECK (
+      status = 'active'
+      AND student_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid() AND role = 'student')
+      AND EXISTS (SELECT 1 FROM public.classes WHERE id = class_id AND is_active = TRUE)
+    );
+
+CREATE POLICY "Students can reactivate own enrollment"
+    ON public.class_enrollments FOR UPDATE
+    TO authenticated
+    USING (student_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid() AND role = 'student'))
+    WITH CHECK (
+      status = 'active'
+      AND student_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid() AND role = 'student')
+      AND EXISTS (SELECT 1 FROM public.classes WHERE id = class_id AND is_active = TRUE)
+    );
 
 -- Students can drop/leave their own enrolled class
 CREATE POLICY "Students can leave enrolled class"
@@ -133,7 +147,17 @@ CREATE POLICY "Students can leave enrolled class"
 CREATE POLICY "Authenticated users can view active invitations"
     ON public.class_invitations FOR SELECT
     TO authenticated
-    USING (is_revoked = false AND expires_at > NOW());
+    USING (is_active = true AND expires_at > NOW());
+
+REVOKE INSERT, UPDATE ON public.profiles FROM authenticated;
+GRANT SELECT ON public.profiles TO authenticated;
+GRANT INSERT (user_id, email, full_name, first_name, roll_number, degree, semester, avatar_url, updated_at)
+    ON public.profiles TO authenticated;
+GRANT UPDATE (user_id, email, full_name, first_name, roll_number, degree, semester, avatar_url, updated_at)
+    ON public.profiles TO authenticated;
+GRANT SELECT ON public.classes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.class_enrollments TO authenticated;
+GRANT SELECT ON public.class_invitations TO authenticated;
 
 -- ====================================================================
 -- SEED DEVELOPMENT CLASSES & INVITATIONS
