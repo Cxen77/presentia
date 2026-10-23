@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, type CSSProperties } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar } from './components/layout/Sidebar';
@@ -33,17 +33,16 @@ const ProtectedRoute: React.FC = () => {
 
 const AppLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
 
   return (
-    <div className="min-h-screen bg-[#061522]">
-      <Sidebar collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} />
-      <div
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
-        }`}
-      >
-        <Header onMenuToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        <main className="p-6 md:p-8">
+    <div className="portal-shell" style={{ '--sidebar-width': sidebarCollapsed ? '72px' : '216px' } as CSSProperties}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <Sidebar collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} mobileOpen={mobileOpen} onClose={closeMobileMenu} />
+      <div className="portal-content" inert={mobileOpen}>
+        <Header onMenuToggle={() => setMobileOpen(true)} menuOpen={mobileOpen} />
+        <main id="main-content" className="portal-main" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

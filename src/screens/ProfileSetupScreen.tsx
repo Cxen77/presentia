@@ -178,7 +178,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         const localUri = result.assets[0].uri;
         setPhotoUri(localUri);
 
-        // Upload to Cloudinary using secure unsigned preset
+        // Upload with a signed payload from the authenticated backend.
         setUploadingPhoto(true);
         setUploadProgress(20);
         try {

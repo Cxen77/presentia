@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   QrCode, 
@@ -18,6 +18,7 @@ import {
   Camera,
   Play
 } from 'lucide-react';
+import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
@@ -36,6 +37,8 @@ export const LiveAttendancePage: React.FC = () => {
   const [rejectReason, setRejectReason] = useState<string>('Visual photo mismatch with student profile');
   const [confirmEndModal, setConfirmEndModal] = useState<boolean>(false);
   const [simulating, setSimulating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // Load classes and active session
   const refreshData = async () => {
@@ -117,9 +120,12 @@ export const LiveAttendancePage: React.FC = () => {
     const targetId = classIdToStart || selectedClassId;
     if (!targetId) return;
 
-    const session = await attendanceDataService.startSession(targetId, user.id, user.name);
-    setActiveSession(session);
-    setSecondsRemaining(25);
+    setStarting(true); setStartError(null);
+    try {
+      const session = await attendanceDataService.startSession(targetId, user.id, user.name);
+      setActiveSession(session); setSecondsRemaining(25);
+    } catch (error) { setStartError(error instanceof Error ? error.message : 'Unable to start attendance.'); }
+    finally { setStarting(false); }
   };
 
   const handleConfirmStudent = async (recordId: string) => {
@@ -157,7 +163,7 @@ export const LiveAttendancePage: React.FC = () => {
   const pendingRecords = records.filter(r => r.status === 'PENDING');
   const presentRecords = records.filter(r => r.status === 'PRESENT');
   const rejectedRecords = records.filter(r => r.status === 'REJECTED');
-  const totalEnrolled = 8; // Department standard cohort size
+  const totalEnrolled = classes.find(cls => cls.id === activeSession?.classId)?.enrolledStudentsCount ?? 0;
 
   // QR Code Payload (JSON formatted with token, session id, and cryptographic timestamp)
   const qrPayload = activeSession ? JSON.stringify({
@@ -171,71 +177,35 @@ export const LiveAttendancePage: React.FC = () => {
   }) : '';
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[#293D53]/60">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#9AB9EC] mb-1">
-            <span>Live Session Controller</span>
-            <span>•</span>
-            <span>Real-Time Biometric Photo Review</span>
-          </div>
-          <h1 className="text-2xl font-bold text-[#F4F5F7] tracking-tight">
-            {activeSession ? `Live Attendance: ${activeSession.className}` : 'Conduct Live Attendance'}
-          </h1>
-          <p className="text-sm text-[#A8B9D0] mt-1">
-            {activeSession
-              ? `Displaying dynamic rotating QR for ${activeSession.courseCode} in ${activeSession.room}. Submissions update in real-time.`
-              : 'Select a course to initialize a secured, dynamic QR attendance session with side-by-side verification.'}
-          </p>
-        </div>
-
-        {activeSession && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSimulateScan}
-              disabled={simulating}
-              className="px-3.5 py-2 rounded-lg bg-[#182D43] hover:bg-[#202D39] border border-[#293D53] text-xs font-semibold text-[#9AB9EC] transition-all flex items-center gap-2 shadow-sm"
-              title="Simulates a student scanning the QR code with their mobile camera"
-            >
-              <Camera size={15} />
-              <span>{simulating ? 'Transmitting Scan...' : 'Simulate Student Scan'}</span>
-            </button>
-
-            <button
-              onClick={() => setConfirmEndModal(true)}
-              className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 text-xs font-semibold transition-all flex items-center gap-2 shadow-sm"
-            >
-              <StopCircle size={16} />
-              <span>End Attendance Session</span>
-            </button>
-          </div>
-        )}
-      </div>
-
+    <div className="legacy-page page-stack">
+      <PageHeading eyebrow="ATTENDANCE" title={activeSession ? activeSession.className : 'Live attendance'} description={activeSession ? `${activeSession.courseCode} · Review incoming submissions below.` : 'Choose a class, share its QR, and review student submissions.'}
+        action={activeSession && <button className="p-button danger" onClick={() => setConfirmEndModal(true)}><StopCircle size={14} />End session</button>} />
+      <InlineError message={startError} />
       {/* No Active Session State: Class Selector */}
       {!activeSession ? (
-        <div className="bg-[#12283D] border border-[#293D53] rounded-2xl p-8 max-w-2xl mx-auto text-center space-y-6 shadow-xl">
-          <div className="w-16 h-16 rounded-2xl bg-[#182D43] border border-[#293D53] text-[#9AB9EC] flex items-center justify-center mx-auto shadow-md">
+        <div className="session-selector panel space-y-5">
+          <div className="session-icon bg-[#202c3e] border border-[#273548] text-[#b5bafa] flex items-center justify-center">
             <QrCode size={32} />
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-[#F4F5F7]">Select Course to Launch Live Attendance</h2>
-            <p className="text-xs text-[#A8B9D0] mt-1.5 max-w-md mx-auto">
-              Dynamic QR codes prevent proxy attendance by automatically rotating every 25 seconds with single-use cryptographic tokens.
+            <h2 className="text-xl font-bold text-[#eef2f8]">Start a session</h2>
+            <p className="text-xs text-[#9aabc1] mt-1.5 max-w-md mx-auto">
+              Students use the QR code to submit their attendance for review.
             </p>
           </div>
 
           <div className="space-y-3 text-left">
-            <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider">
-              Select Class Cohort
+            <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider">
+              Class
             </label>
             <select
+              aria-label="Class for attendance"
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
+              className="w-full px-4 py-3 rounded-xl bg-[#111b28] border border-[#273548] text-sm text-[#eef2f8] focus:outline-none focus:border-[#b5bafa]"
             >
+              {!classes.length && <option value="">No classes available</option>}
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.courseCode} — {c.className} ({c.room})
@@ -244,40 +214,44 @@ export const LiveAttendancePage: React.FC = () => {
             </select>
           </div>
 
+          {!classes.length && <p className="text-xs text-slate-400">Create a class before starting attendance. <Link to="/create-class" className="text-link">Create class</Link></p>}
           <button
+            disabled={!selectedClassId || starting}
             onClick={() => handleStartSession()}
             className="w-full py-3.5 px-6 rounded-xl bg-[#F3F2EF] hover:bg-white text-[#101D2C] font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2"
           >
             <Play size={17} />
-            <span>Start Live Session & Display QR</span>
+            <span>{starting ? 'Starting…' : 'Start attendance'}</span>
           </button>
+          <Disclosure title="How it works"><p>Students scan the rotating QR code and submit a photo. Review each submission before confirming attendance, then end the session to open its report.</p></Disclosure>
         </div>
       ) : (
         /* Active Live Attendance View */
         <div className="space-y-6">
+          <Disclosure title="Session tools" description="Optional scan simulation"><button className="p-button secondary small" disabled={simulating} onClick={handleSimulateScan}><Camera size={13} />{simulating ? 'Simulating…' : 'Simulate student scan'}</button></Disclosure>
           {/* Top Session Stats Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-[#12283D] border border-[#293D53] rounded-xl p-4 text-center">
-              <span className="text-[11px] text-[#A8B9D0] font-semibold uppercase">Enrolled</span>
-              <p className="text-xl font-bold text-[#F4F5F7] mt-0.5">{totalEnrolled}</p>
+            <div className="bg-[#172333] border border-[#273548] rounded-xl p-4 text-center">
+              <span className="text-[11px] text-[#9aabc1] font-semibold uppercase">Enrolled</span>
+              <p className="text-xl font-bold text-[#eef2f8] mt-0.5">{totalEnrolled}</p>
             </div>
 
-            <div className="bg-[#12283D] border border-[#293D53] rounded-xl p-4 text-center">
-              <span className="text-[11px] text-[#A8B9D0] font-semibold uppercase">Submissions</span>
-              <p className="text-xl font-bold text-[#9AB9EC] mt-0.5">{records.length}</p>
+            <div className="bg-[#172333] border border-[#273548] rounded-xl p-4 text-center">
+              <span className="text-[11px] text-[#9aabc1] font-semibold uppercase">Submissions</span>
+              <p className="text-xl font-bold text-[#b5bafa] mt-0.5">{records.length}</p>
             </div>
 
-            <div className="bg-[#12283D] border border-amber-500/40 rounded-xl p-4 text-center bg-amber-950/10">
+            <div className="bg-[#172333] border border-amber-500/40 rounded-xl p-4 text-center bg-amber-950/10">
               <span className="text-[11px] text-amber-300 font-semibold uppercase">Pending Review</span>
               <p className="text-xl font-bold text-amber-400 mt-0.5">{pendingRecords.length}</p>
             </div>
 
-            <div className="bg-[#12283D] border border-emerald-500/40 rounded-xl p-4 text-center bg-emerald-950/10">
+            <div className="bg-[#172333] border border-emerald-500/40 rounded-xl p-4 text-center bg-emerald-950/10">
               <span className="text-[11px] text-emerald-300 font-semibold uppercase">Confirmed</span>
               <p className="text-xl font-bold text-emerald-400 mt-0.5">{presentRecords.length}</p>
             </div>
 
-            <div className="bg-[#12283D] border border-red-500/40 rounded-xl p-4 text-center bg-red-950/10">
+            <div className="bg-[#172333] border border-red-500/40 rounded-xl p-4 text-center bg-red-950/10">
               <span className="text-[11px] text-red-300 font-semibold uppercase">Rejected</span>
               <p className="text-xl font-bold text-red-400 mt-0.5">{rejectedRecords.length}</p>
             </div>
@@ -287,31 +261,31 @@ export const LiveAttendancePage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left Column (5 Cols): Dynamic QR Code Projector */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="bg-[#081B2A] border-2 border-[#293D53] rounded-2xl p-6 text-center space-y-4 shadow-xl sticky top-24">
+              <div className="bg-[#111b28] border-2 border-[#273548] rounded-2xl p-6 text-center space-y-4 shadow-xl sticky top-24">
                 {/* Header status */}
-                <div className="flex items-center justify-between text-xs border-b border-[#293D53]/70 pb-3">
+                <div className="flex items-center justify-between text-xs border-b border-[#273548]/70 pb-3">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="font-bold text-emerald-400">ACTIVE SESSION</span>
                   </div>
-                  <span className="text-[11px] text-[#A8B9D0] font-mono">
+                  <span className="text-[11px] text-[#9aabc1] font-mono">
                     Token #{activeSession.tokenRotationCount}
                   </span>
                 </div>
 
                 {/* Course Metadata */}
                 <div>
-                  <h3 className="text-lg font-bold text-[#F4F5F7]">{activeSession.className}</h3>
-                  <p className="text-xs text-[#9AB9EC] font-semibold mt-0.5">
+                  <h3 className="text-lg font-bold text-[#eef2f8]">{activeSession.className}</h3>
+                  <p className="text-xs text-[#b5bafa] font-semibold mt-0.5">
                     {activeSession.courseCode} • {activeSession.room}
                   </p>
                 </div>
 
                 {/* QR Display Card */}
-                <div className="bg-white p-5 rounded-2xl inline-block shadow-2xl mx-auto border-4 border-[#182D43]">
+                <div className="bg-white p-4 rounded-xl inline-block mx-auto">
                   <QRCodeSVG
                     value={qrPayload}
-                    size={240}
+                    size={210}
                     level="H"
                     includeMargin={false}
                   />
@@ -319,9 +293,9 @@ export const LiveAttendancePage: React.FC = () => {
 
                 {/* Countdown and Progress */}
                 <div className="space-y-2 pt-2">
-                  <div className="flex items-center justify-between text-xs text-[#A8B9D0]">
+                  <div className="flex items-center justify-between text-xs text-[#9aabc1]">
                     <span className="flex items-center gap-1.5 font-medium">
-                      <Clock size={13} className="text-[#9AB9EC]" />
+                      <Clock size={13} className="text-[#b5bafa]" />
                       QR Code Validity:
                     </span>
                     <span className="font-mono font-bold text-emerald-400 text-sm">
@@ -330,14 +304,14 @@ export const LiveAttendancePage: React.FC = () => {
                   </div>
 
                   {/* Countdown Progress Bar */}
-                  <div className="w-full h-2 rounded-full bg-[#12283D] overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-[#172333] overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-[#9AB9EC] transition-all duration-1000 ease-linear"
+                      className="h-full bg-gradient-to-r from-emerald-500 to-[#b5bafa] transition-all duration-1000 ease-linear"
                       style={{ width: `${(secondsRemaining / 25) * 100}%` }}
                     />
                   </div>
 
-                  <p className="text-[11px] text-[#7F94B0] pt-1">
+                  <p className="text-[11px] text-[#74869d] pt-1">
                     Auto-refreshes every 25s with anti-replay signature. Screenshots are invalidated automatically.
                   </p>
                 </div>
@@ -350,23 +324,23 @@ export const LiveAttendancePage: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-base font-bold text-[#F4F5F7] flex items-center gap-2">
+                    <h2 className="text-base font-bold text-[#eef2f8] flex items-center gap-2">
                       <span>Pending Identity Verification</span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                         {pendingRecords.length} Awaiting
                       </span>
                     </h2>
-                    <p className="text-xs text-[#A8B9D0] mt-0.5">
+                    <p className="text-xs text-[#9aabc1] mt-0.5">
                       Visually inspect the student's registered university photo side-by-side with their live camera verification photo.
                     </p>
                   </div>
                 </div>
 
                 {pendingRecords.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl bg-[#12283D] border border-dashed border-[#293D53]">
+                  <div className="p-8 text-center rounded-2xl bg-[#172333] border border-dashed border-[#273548]">
                     <CheckCircle2 size={32} className="mx-auto text-emerald-400 mb-2" />
-                    <p className="text-sm font-semibold text-[#F4F5F7]">All Submissions Reviewed</p>
-                    <p className="text-xs text-[#A8B9D0] mt-1">
+                    <p className="text-sm font-semibold text-[#eef2f8]">All Submissions Reviewed</p>
+                    <p className="text-xs text-[#9aabc1] mt-1">
                       No incoming student scans are currently awaiting photo verification.
                     </p>
                   </div>
@@ -375,18 +349,18 @@ export const LiveAttendancePage: React.FC = () => {
                     {pendingRecords.map((record) => (
                       <div
                         key={record.id}
-                        className="bg-[#12283D] border-2 border-amber-500/50 rounded-2xl p-5 shadow-lg space-y-4"
+                        className="bg-[#172333] border-2 border-amber-500/50 rounded-2xl p-5 shadow-lg space-y-4"
                       >
                         {/* Student Name Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-[#293D53]/60">
+                        <div className="flex items-center justify-between pb-3 border-b border-[#273548]/60">
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="text-base font-bold text-[#F4F5F7]">{record.studentName}</h3>
-                              <span className="font-mono text-xs text-[#9AB9EC] bg-[#182D43] px-2 py-0.5 rounded border border-[#293D53]">
+                              <h3 className="text-base font-bold text-[#eef2f8]">{record.studentName}</h3>
+                              <span className="font-mono text-xs text-[#b5bafa] bg-[#202c3e] px-2 py-0.5 rounded border border-[#273548]">
                                 {record.studentRollNumber}
                               </span>
                             </div>
-                            <p className="text-[11px] text-[#A8B9D0] mt-0.5">
+                            <p className="text-[11px] text-[#9aabc1] mt-0.5">
                               Scanned at {new Date(record.submittedAt).toLocaleTimeString()}
                             </p>
                           </div>
@@ -400,16 +374,16 @@ export const LiveAttendancePage: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4">
                           {/* Left: Registered University Profile Photo */}
                           <div className="space-y-1.5 text-center">
-                            <span className="text-[11px] font-semibold text-[#A8B9D0] uppercase tracking-wider block">
+                            <span className="text-[11px] font-semibold text-[#9aabc1] uppercase tracking-wider block">
                               1. Registered Profile
                             </span>
-                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#293D53] bg-[#081B2A]">
+                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#273548] bg-[#111b28]">
                               <img
                                 src={record.studentAvatarUrl}
                                 alt="Registered university profile"
                                 className="w-full h-full object-cover"
                               />
-                              <div className="absolute bottom-1 left-1 right-1 bg-[#061522]/80 backdrop-blur-sm py-0.5 text-[10px] text-[#A8B9D0] rounded">
+                              <div className="absolute bottom-1 left-1 right-1 bg-[#0b111b]/80 backdrop-blur-sm py-0.5 text-[10px] text-[#9aabc1] rounded">
                                 Database Record
                               </div>
                             </div>
@@ -420,7 +394,7 @@ export const LiveAttendancePage: React.FC = () => {
                             <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider block">
                               2. Live Camera Snapshot
                             </span>
-                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-[#081B2A]">
+                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-[#111b28]">
                               <img
                                 src={record.verificationPhotoUrl}
                                 alt="Live attendance verification snapshot"
@@ -448,7 +422,7 @@ export const LiveAttendancePage: React.FC = () => {
 
                           <button
                             onClick={() => handleConfirmStudent(record.id)}
-                            className="py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#061522] text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
+                            className="py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#0b111b] text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
                           >
                             <CheckCircle2 size={16} />
                             <span>Confirm Present</span>
@@ -461,23 +435,23 @@ export const LiveAttendancePage: React.FC = () => {
               </div>
 
               {/* Section 2: Confirmed Present Roster */}
-              <div className="space-y-3 pt-4 border-t border-[#293D53]/60">
+              <div className="space-y-3 pt-4 border-t border-[#273548]/60">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-[#F4F5F7] flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-[#eef2f8] flex items-center gap-2">
                     <CheckCircle2 size={16} className="text-emerald-400" />
                     <span>Confirmed Present ({presentRecords.length})</span>
                   </h3>
-                  <span className="text-xs text-[#7F94B0]">Verified & Authoritative</span>
+                  <span className="text-xs text-[#74869d]">Verified & Authoritative</span>
                 </div>
 
                 {presentRecords.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-[#12283D] border border-[#293D53] text-center text-xs text-[#A8B9D0]">
+                  <div className="p-4 rounded-xl bg-[#172333] border border-[#273548] text-center text-xs text-[#9aabc1]">
                     No students have been confirmed present yet.
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-[#293D53] overflow-hidden bg-[#12283D]">
+                  <div className="rounded-xl border border-[#273548] overflow-hidden bg-[#172333]">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-[#182D43] text-[#A8B9D0] border-b border-[#293D53] uppercase font-semibold text-[11px]">
+                      <thead className="bg-[#202c3e] text-[#9aabc1] border-b border-[#273548] uppercase font-semibold text-[11px]">
                         <tr>
                           <th className="py-2 px-4">Student</th>
                           <th className="py-2 px-4">USN / Roll No</th>
@@ -485,19 +459,19 @@ export const LiveAttendancePage: React.FC = () => {
                           <th className="py-2 px-4 text-center">Status</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#293D53]/60 text-[#F4F5F7]">
+                      <tbody className="divide-y divide-[#273548]/60 text-[#eef2f8]">
                         {presentRecords.map((r) => (
-                          <tr key={r.id} className="hover:bg-[#182D43]/40 transition-colors">
+                          <tr key={r.id} className="hover:bg-[#202c3e]/40 transition-colors">
                             <td className="py-2 px-4 flex items-center gap-2.5">
                               <img
                                 src={r.studentAvatarUrl}
                                 alt={r.studentName}
-                                className="w-6 h-6 rounded-full object-cover border border-[#293D53]"
+                                className="w-6 h-6 rounded-full object-cover border border-[#273548]"
                               />
                               <span className="font-semibold">{r.studentName}</span>
                             </td>
-                            <td className="py-2 px-4 font-mono text-[#9AB9EC]">{r.studentRollNumber}</td>
-                            <td className="py-2 px-4 text-[#A8B9D0]">
+                            <td className="py-2 px-4 font-mono text-[#b5bafa]">{r.studentRollNumber}</td>
+                            <td className="py-2 px-4 text-[#9aabc1]">
                               {r.verifiedAt ? new Date(r.verifiedAt).toLocaleTimeString() : 'Just now'}
                             </td>
                             <td className="py-2 px-4 text-center">
@@ -524,7 +498,7 @@ export const LiveAttendancePage: React.FC = () => {
                     {rejectedRecords.map((r) => (
                       <div key={r.id} className="p-3 flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-[#F4F5F7]">{r.studentName} ({r.studentRollNumber})</p>
+                          <p className="font-semibold text-[#eef2f8]">{r.studentName} ({r.studentRollNumber})</p>
                           <p className="text-[11px] text-red-300/80 mt-0.5">Reason: {r.rejectionReason || 'Photo mismatch'}</p>
                         </div>
                         <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
@@ -543,24 +517,24 @@ export const LiveAttendancePage: React.FC = () => {
       {/* Reject Reason Confirmation Modal */}
       {rejectModalRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#081B2A] border border-[#293D53] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+          <div className="bg-[#111b28] border border-[#273548] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-red-400">
               <ShieldAlert size={22} />
-              <h3 className="text-base font-bold text-[#F4F5F7]">Reject Attendance Submission</h3>
+              <h3 className="text-base font-bold text-[#eef2f8]">Reject Attendance Submission</h3>
             </div>
 
-            <p className="text-xs text-[#A8B9D0]">
+            <p className="text-xs text-[#9aabc1]">
               Rejecting attendance for <strong>{rejectModalRecord.studentName}</strong> ({rejectModalRecord.studentRollNumber}). This record will not be counted as present.
             </p>
 
             <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
                 Rejection Reason
               </label>
               <select
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#12283D] border border-[#293D53] text-xs text-[#F4F5F7] focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-xs text-[#eef2f8] focus:outline-none"
               >
                 <option value="Visual photo mismatch with student profile">Visual photo mismatch with student profile</option>
                 <option value="Student not physically present in classroom">Student not physically present in classroom</option>
@@ -572,7 +546,7 @@ export const LiveAttendancePage: React.FC = () => {
             <div className="flex items-center justify-end gap-3 pt-3">
               <button
                 onClick={() => setRejectModalRecord(null)}
-                className="px-4 py-2 rounded-lg bg-[#12283D] hover:bg-[#182D43] text-xs font-semibold text-[#A8B9D0]"
+                className="px-4 py-2 rounded-lg bg-[#172333] hover:bg-[#202c3e] text-xs font-semibold text-[#9aabc1]"
               >
                 Cancel
               </button>
@@ -590,9 +564,9 @@ export const LiveAttendancePage: React.FC = () => {
       {/* End Session Confirmation Modal */}
       {confirmEndModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#081B2A] border border-[#293D53] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-[#F4F5F7]">End Live Attendance Session?</h3>
-            <p className="text-xs text-[#A8B9D0] leading-relaxed">
+          <div className="bg-[#111b28] border border-[#273548] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-[#eef2f8]">End Live Attendance Session?</h3>
+            <p className="text-xs text-[#9aabc1] leading-relaxed">
               This will stop the dynamic QR generator and prevent any new student submissions. 
               {pendingRecords.length > 0 && (
                 <span className="block mt-2 font-semibold text-amber-300">
@@ -604,7 +578,7 @@ export const LiveAttendancePage: React.FC = () => {
             <div className="flex items-center justify-end gap-3 pt-3">
               <button
                 onClick={() => setConfirmEndModal(false)}
-                className="px-4 py-2 rounded-lg bg-[#12283D] hover:bg-[#182D43] text-xs font-semibold text-[#A8B9D0]"
+                className="px-4 py-2 rounded-lg bg-[#172333] hover:bg-[#202c3e] text-xs font-semibold text-[#9aabc1]"
               >
                 Continue Session
               </button>

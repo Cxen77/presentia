@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { EmptyState, PageHeading } from '../components/ui/PortalUI';
 import { 
   FileSpreadsheet, 
   Download, 
@@ -123,13 +125,13 @@ export const ReportsPage: React.FC = () => {
         );
       case 'CLOSED':
         return (
-          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#182D43] text-[#A8B9D0] border border-[#293D53]">
+          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#202c3e] text-[#9aabc1] border border-[#273548]">
             Finalized
           </span>
         );
       default:
         return (
-          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#182D43] text-[#7F94B0] border border-[#293D53]">
+          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#202c3e] text-[#74869d] border border-[#273548]">
             {status}
           </span>
         );
@@ -168,26 +170,11 @@ export const ReportsPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#293D53]/60">
-        <div>
-          <h1 className="text-2xl font-bold text-[#F4F5F7] tracking-tight">Attendance Reports</h1>
-          <p className="text-sm text-[#A8B9D0] mt-1">
-            Review past attendance sessions, verify remaining submissions, and export official .xlsx attendance sheets.
-          </p>
-        </div>
-      </div>
-
+    <div className="legacy-page page-stack">
+      <PageHeading eyebrow="ATTENDANCE" title="Reports" description="Open a session to review its roster, then export when you’re ready." />
       {/* Session List */}
       {sessions.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-[#081B2A] border border-dashed border-[#293D53]">
-          <FileSpreadsheet size={36} className="mx-auto text-[#7F94B0] mb-3" />
-          <h3 className="text-base font-semibold text-[#F4F5F7]">No Attendance Sessions Recorded</h3>
-          <p className="text-xs text-[#A8B9D0] mt-1 max-w-sm mx-auto">
-            Start a live QR attendance session from the Dashboard or Live Attendance page to see records here.
-          </p>
-        </div>
+        <section className="panel"><EmptyState icon={FileSpreadsheet} title="Your reports will live here" description="After your first attendance session, open its report to review students and download an Excel sheet." action={<Link to="/live-attendance" className="p-button secondary small">Take attendance</Link>} /></section>
       ) : (
         <div className="space-y-4">
           {sessions.map((session) => {
@@ -196,36 +183,36 @@ export const ReportsPage: React.FC = () => {
             return (
               <div
                 key={session.id}
-                className={`bg-[#12283D] border rounded-2xl overflow-hidden shadow-sm transition-all ${
-                  isExpanded ? 'border-[#9AB9EC]/50' : 'border-[#293D53]'
+                className={`bg-[#172333] border rounded-2xl overflow-hidden shadow-sm transition-all ${
+                  isExpanded ? 'border-[#b5bafa]/50' : 'border-[#273548]'
                 }`}
               >
                 {/* Session Row */}
                 <div
-                  className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-[#182D43]/50 transition-colors"
-                  onClick={() => handleExpandSession(session.id)}
+                  className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#202c3e]/50 transition-colors"
+
                 >
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-[#182D43] border border-[#293D53] text-[#9AB9EC]">
+                      <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-[#202c3e] border border-[#273548] text-[#b5bafa]">
                         {session.courseCode}
                       </span>
                       {getStatusBadge(session.status)}
                     </div>
 
-                    <h3 className="text-base font-bold text-[#F4F5F7]">{session.className}</h3>
+                    <h3 className="text-sm font-semibold text-[#eef2f8]"><button type="button" className="text-left hover:text-indigo-200" aria-expanded={isExpanded} aria-controls={`report-${session.id}`} onClick={() => handleExpandSession(session.id)}>{session.className}</button></h3>
 
-                    <div className="flex flex-wrap items-center gap-4 text-xs text-[#A8B9D0]">
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-[#9aabc1]">
                       <span className="flex items-center gap-1.5">
-                        <Calendar size={13} className="text-[#9AB9EC]" />
+                        <Calendar size={13} className="text-[#b5bafa]" />
                         {session.date}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <Clock size={13} className="text-[#9AB9EC]" />
+                        <Clock size={13} className="text-[#b5bafa]" />
                         {session.startTime} - {session.endTime}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <MapPin size={13} className="text-[#9AB9EC]" />
+                        <MapPin size={13} className="text-[#b5bafa]" />
                         {session.room}
                       </span>
                     </div>
@@ -263,49 +250,49 @@ export const ReportsPage: React.FC = () => {
                       )}
                     </button>
 
-                    <div className="p-1.5 text-[#7F94B0]">
+                    <button type="button" className="icon-button" aria-label={`${isExpanded ? 'Hide' : 'View'} report for ${session.className}`} aria-expanded={isExpanded} aria-controls={`report-${session.id}`} onClick={() => handleExpandSession(session.id)}>
                       {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                    </div>
+                    </button>
                   </div>
                 </div>
 
                 {/* Expanded Full Roster Table */}
                 {isExpanded && (
-                  <div className="border-t border-[#293D53]">
+                  <div id={`report-${session.id}`} className="border-t border-[#273548]">
                     {loadingRoster ? (
-                      <div className="p-8 text-center text-xs text-[#A8B9D0]">
+                      <div className="p-8 text-center text-xs text-[#9aabc1]">
                         Loading session roster and verification records...
                       </div>
                     ) : rosterData ? (
                       <div className="p-5 space-y-5">
                         {/* Session Metrics Row */}
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                          <div className="bg-[#081B2A] border border-[#293D53] rounded-lg p-3 text-center">
-                            <p className="text-[11px] text-[#A8B9D0] font-semibold uppercase">Total Enrolled</p>
-                            <p className="text-lg font-bold text-[#F4F5F7]">{rosterData.metrics.totalEnrolled}</p>
+                          <div className="bg-[#111b28] border border-[#273548] rounded-lg p-3 text-center">
+                            <p className="text-[11px] text-[#9aabc1] font-semibold uppercase">Total Enrolled</p>
+                            <p className="text-lg font-bold text-[#eef2f8]">{rosterData.metrics.totalEnrolled}</p>
                           </div>
-                          <div className="bg-[#081B2A] border border-emerald-500/30 rounded-lg p-3 text-center">
+                          <div className="bg-[#111b28] border border-emerald-500/30 rounded-lg p-3 text-center">
                             <p className="text-[11px] text-emerald-300 font-semibold uppercase">Present</p>
                             <p className="text-lg font-bold text-emerald-400">{rosterData.metrics.present}</p>
                           </div>
-                          <div className="bg-[#081B2A] border border-red-500/30 rounded-lg p-3 text-center">
+                          <div className="bg-[#111b28] border border-red-500/30 rounded-lg p-3 text-center">
                             <p className="text-[11px] text-red-300 font-semibold uppercase">Absent</p>
                             <p className="text-lg font-bold text-red-400">{rosterData.metrics.absent}</p>
                           </div>
-                          <div className="bg-[#081B2A] border border-amber-500/30 rounded-lg p-3 text-center">
+                          <div className="bg-[#111b28] border border-amber-500/30 rounded-lg p-3 text-center">
                             <p className="text-[11px] text-amber-300 font-semibold uppercase">Pending</p>
                             <p className="text-lg font-bold text-amber-400">{rosterData.metrics.pending}</p>
                           </div>
-                          <div className="bg-[#081B2A] border border-[#9AB9EC]/30 rounded-lg p-3 text-center">
-                            <p className="text-[11px] text-[#9AB9EC] font-semibold uppercase">Attendance %</p>
-                            <p className="text-lg font-bold text-[#9AB9EC]">{rosterData.metrics.attendancePercentage}%</p>
+                          <div className="bg-[#111b28] border border-[#b5bafa]/30 rounded-lg p-3 text-center">
+                            <p className="text-[11px] text-[#b5bafa] font-semibold uppercase">Attendance %</p>
+                            <p className="text-lg font-bold text-[#b5bafa]">{rosterData.metrics.attendancePercentage}%</p>
                           </div>
                         </div>
 
                         {/* Full Roster Table */}
-                        <div className="rounded-xl border border-[#293D53] overflow-hidden">
+                        <div className="rounded-xl border border-[#273548] overflow-hidden">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-[#182D43] text-[#A8B9D0] border-b border-[#293D53] uppercase font-semibold text-[11px]">
+                            <thead className="bg-[#202c3e] text-[#9aabc1] border-b border-[#273548] uppercase font-semibold text-[11px]">
                               <tr>
                                 <th className="py-2.5 px-4 w-12">Sl.</th>
                                 <th className="py-2.5 px-4">Student Name</th>
@@ -315,32 +302,32 @@ export const ReportsPage: React.FC = () => {
                                 <th className="py-2.5 px-4">Verified By</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#293D53]/60 text-[#F4F5F7]">
+                            <tbody className="divide-y divide-[#273548]/60 text-[#eef2f8]">
                               {rosterData.roster.map((item) => (
-                                <tr key={item.student.id} className="hover:bg-[#182D43]/40 transition-colors">
-                                  <td className="py-2.5 px-4 text-[#7F94B0] font-mono">{item.serialNo}</td>
+                                <tr key={item.student.id} className="hover:bg-[#202c3e]/40 transition-colors">
+                                  <td className="py-2.5 px-4 text-[#74869d] font-mono">{item.serialNo}</td>
                                   <td className="py-2.5 px-4">
                                     <div className="flex items-center gap-2.5">
                                       <img
                                         src={item.student.avatarUrl}
                                         alt={item.student.fullName}
-                                        className="w-6 h-6 rounded-full object-cover border border-[#293D53]"
+                                        className="w-6 h-6 rounded-full object-cover border border-[#273548]"
                                       />
                                       <span className="font-semibold">{item.student.fullName}</span>
                                     </div>
                                   </td>
-                                  <td className="py-2.5 px-4 font-mono text-[#9AB9EC]">
+                                  <td className="py-2.5 px-4 font-mono text-[#b5bafa]">
                                     {item.student.rollNumber}
                                   </td>
                                   <td className="py-2.5 px-4 text-center">
                                     {getRecordStatusBadge(item.status)}
                                   </td>
-                                  <td className="py-2.5 px-4 text-[#A8B9D0]">
+                                  <td className="py-2.5 px-4 text-[#9aabc1]">
                                     {item.record?.submittedAt
                                       ? new Date(item.record.submittedAt).toLocaleTimeString()
                                       : '—'}
                                   </td>
-                                  <td className="py-2.5 px-4 text-[#A8B9D0]">
+                                  <td className="py-2.5 px-4 text-[#9aabc1]">
                                     {item.record?.verifiedByName || '—'}
                                   </td>
                                 </tr>
@@ -350,7 +337,7 @@ export const ReportsPage: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="p-6 text-center text-xs text-[#A8B9D0]">
+                      <div className="p-6 text-center text-xs text-[#9aabc1]">
                         Could not load roster data.
                       </div>
                     )}

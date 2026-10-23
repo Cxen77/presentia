@@ -165,7 +165,8 @@ export async function leaveClass(enrollmentId: string) {
 
 export async function submitAttendance(data: {
   qrToken: string;
-  verificationPhotoUrl?: string;
+  verificationPhotoUrl: string;
+  verificationPhotoSignature: string;
 }) {
   return apiRequest('/api/attendance/submit', { method: 'POST', body: data });
 }
@@ -179,7 +180,7 @@ export async function getMyAttendanceRecords() {
 // =============================================================================
 
 export async function getCloudinarySignature(folder: string, publicId?: string) {
-  return apiRequest('/api/cloudinary/signature', {
+  return apiRequest<{ cloudName: string; apiKey: string; timestamp: number; signature: string; folder: string; publicId: string; type: 'upload' | 'authenticated'; overwrite: boolean }>('/api/cloudinary/signature', {
     method: 'POST',
     body: { folder, publicId },
   });

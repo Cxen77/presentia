@@ -1,91 +1,56 @@
 import { Platform } from 'react-native';
+import { getCloudinarySignature } from './api';
 
-const CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || '';
-const UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || '';
+export type CloudinaryFolder = 'student_profiles' | 'attendance_verification';
+export interface CloudinaryUploadReceipt { url: string; signature: string }
 
-export const isCloudinaryConfigured = (): boolean => {
-  return (
-    Boolean(CLOUD_NAME) &&
-    CLOUD_NAME !== 'your-cloudinary-cloud-name' &&
-    Boolean(UPLOAD_PRESET) &&
-    UPLOAD_PRESET !== 'your-unsigned-preset'
-  );
-};
-
-export interface CloudinaryUploadResult {
-  url: string;
-  publicId?: string;
+/** Upload directly with a backend signature. The API secret never enters this client. */
+export async function uploadCloudinaryImage(imageUri: string, folder: CloudinaryFolder = 'student_profiles', onProgress?: (progress: number) => void): Promise<CloudinaryUploadReceipt> {
+  if (!imageUri) throw new Error('Choose or capture a photo first.');
+  onProgress?.(5);
+  const signed = await getCloudinarySignature(folder);
+  if (!signed.cloudName || !signed.apiKey || !signed.signature || !signed.publicId || signed.folder !== folder || !['upload','authenticated'].includes(signed.type)) {
+    throw new Error('The backend did not return valid photo upload settings.');
+  }
+  const form = new FormData();
+  if (Platform.OS === 'web') {
+    const local = await fetch(imageUri);
+    if (!local.ok) throw new Error('Could not read the selected photo.');
+    const blob = await local.blob();
+    if (!blob.type.startsWith('image/')) throw new Error('Choose an image file.');
+    if (blob.size > 10 * 1024 * 1024) throw new Error('Use a photo smaller than 10 MB.');
+    form.append('file', blob, 'photo.jpg');
+  } else {
+    const nativeFile = { uri: imageUri, name: imageUri.split('/').pop() || 'photo.jpg', type: /\.png(?:\?|$)/i.test(imageUri) ? 'image/png' : 'image/jpeg' };
+    form.append('file', nativeFile as unknown as Blob);
+  }
+  for (const [key,value] of Object.entries({api_key:signed.apiKey,timestamp:signed.timestamp,signature:signed.signature,folder:signed.folder,public_id:signed.publicId,type:signed.type,overwrite:signed.overwrite})) form.append(key,String(value));
+  onProgress?.(25);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(),60000);
+  try {
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`,{method:'POST',body:form,signal:controller.signal});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'Photo upload failed. Please try again.');
+    const url = new URL(data.secure_url);
+    if (url.protocol !== 'https:' || url.hostname !== 'res.cloudinary.com' || url.pathname.split('/')[1] !== signed.cloudName || data.public_id !== `${folder}/${signed.publicId}` || !/^[a-f0-9]{40}$/i.test(data.signature || '')) {
+      throw new Error('Cloudinary did not return a valid upload receipt.');
+    }
+    // Cloudinary may include a delivery signature in authenticated upload responses.
+    // Persist the unsigned asset location; only the authorized faculty API signs delivery.
+    if (folder === 'attendance_verification') {
+      if (data.type !== 'authenticated' || !Number.isSafeInteger(data.version) || !/^(jpg|jpeg|png|webp)$/i.test(data.format || '')) throw new Error('Cloudinary did not return a private image.');
+      url.pathname = `/${signed.cloudName}/image/authenticated/v${data.version}/${data.public_id}.${data.format}`;
+      url.search = ''; url.hash = '';
+    }
+    onProgress?.(100);
+    return {url:url.toString(),signature:data.signature};
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw new Error('Photo upload timed out. Please retry.');
+    throw err;
+  } finally { clearTimeout(timeout); }
 }
 
-/**
- * Uploads an image to Cloudinary using a secure, client-safe unsigned upload preset.
- * No API secrets or privileged credentials are ever exposed in the mobile bundle.
- */
-export const uploadImageToCloudinary = async (
-  imageUri: string,
-  onProgress?: (progress: number) => void
-): Promise<string> => {
-  if (!isCloudinaryConfigured()) {
-    console.warn(
-      'Cloudinary is not yet configured with real credentials (EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME, EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET).'
-    );
-    // If not configured, we return the local image URI so the user can continue testing the UI seamlessly
-    return imageUri;
-  }
-
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-  const formData = new FormData();
-
-  if (Platform.OS === 'web') {
-    // On web, if imageUri is a data URI or blob URL, fetch it to a blob or pass directly
-    if (imageUri.startsWith('data:')) {
-      formData.append('file', imageUri);
-    } else {
-      try {
-        const response = await fetch(imageUri);
-        const blob = await response.blob();
-        formData.append('file', blob, 'profile_photo.jpg');
-      } catch {
-        formData.append('file', imageUri);
-      }
-    }
-  } else {
-    // React Native Mobile
-    const filename = imageUri.split('/').pop() || 'photo.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-    formData.append('file', {
-      uri: imageUri,
-      name: filename,
-      type,
-    } as any);
-  }
-
-  formData.append('upload_preset', UPLOAD_PRESET);
-  formData.append('folder', 'student_profiles');
-
-  try {
-    if (onProgress) onProgress(30);
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (onProgress) onProgress(80);
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      const errMsg = data?.error?.message || 'Failed to upload photo to Cloudinary';
-      throw new Error(errMsg);
-    }
-
-    if (onProgress) onProgress(100);
-    return data.secure_url;
-  } catch (err: any) {
-    console.error('Cloudinary upload error:', err);
-    throw new Error(err.message || 'Image upload failed. Please try again.');
-  }
-};
+export async function uploadImageToCloudinary(imageUri: string, onProgress?: (progress: number) => void): Promise<string> {
+  return (await uploadCloudinaryImage(imageUri,'student_profiles',onProgress)).url;
+}

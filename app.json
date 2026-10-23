@@ -23,7 +23,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Presentia to use your camera for QR scans and attendance selfies.",
+          "recordAudioAndroid": false
+        }
+      ]
     ]
   }
 }

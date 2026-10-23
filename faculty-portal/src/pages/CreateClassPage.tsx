@@ -1,327 +1,47 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  PlusCircle, 
-  BookOpen, 
-  Clock, 
-  MapPin, 
-  Sparkles, 
-  AlertCircle, 
-  Check, 
-  ArrowLeft,
-  Building,
-  GraduationCap
-} from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
-
-export const CreateClassPage: React.FC = () => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const [formData, setFormData] = useState({
-    courseCode: 'CS209',
-    className: 'Cloud Computing & Microservices Architecture',
-    department: 'Computer Science & Engineering',
-    semester: '4th Semester - Section A',
-    room: 'Lab 2A • Room 305',
-    days: 'Tue, Thu',
-    startTime: '10:00 AM',
-    endTime: '11:30 AM',
-    classType: 'Theory' as 'Theory' | 'Practical' | 'Seminar',
-    credits: 4,
-    description: 'Comprehensive study of distributed cloud infrastructure, microservices design patterns, Kubernetes orchestration, and serverless compute.',
-  });
-
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Computed preview of enrollment code
-  const cleanCode = formData.courseCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const previewCode = `${cleanCode || 'CODE'}-XXXX`;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    // Validation
-    if (!formData.courseCode.trim()) {
-      setError('Course code is required (e.g., CS201).');
-      return;
-    }
-    if (!formData.className.trim()) {
-      setError('Class / Subject name is required.');
-      return;
-    }
-    if (!formData.room.trim()) {
-      setError('Classroom or laboratory room number is required.');
-      return;
-    }
-
-    // Time validation
-    if (formData.startTime === formData.endTime) {
-      setError('Class end time must be later than the start time.');
-      return;
-    }
-
+import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
+export function CreateClassPage() {
+  const { user } = useAuth(); const navigate = useNavigate();
+  const [step, setStep] = useState(1); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({ courseCode:'', className:'', department:user?.department || '', semester:'', room:'', startTime:'', endTime:'', classType:'Theory' as 'Theory'|'Practical'|'Seminar', credits:4, description:'' });
+  const update = (key: keyof typeof form, value: string | number) => setForm(previous => ({ ...previous, [key]:value }));
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setError(null);
+    if (step === 1) { setStep(2); return; }
+    if (!user) { setError('Please sign in before creating a class.'); return; }
+    if (form.endTime <= form.startTime) { setError('End time must be later than start time.'); return; }
     setSubmitting(true);
     try {
-      await attendanceDataService.createClass({
-        courseCode: formData.courseCode,
-        className: formData.className,
-        department: formData.department,
-        semester: formData.semester,
-        room: formData.room,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        classType: formData.classType,
-        credits: Number(formData.credits),
-        description: formData.description,
-        facultyId: user?.id || 'fac-sengupta-01',
-        facultyName: user?.name || 'Prof. R. Sengupta',
-      });
-
+      await attendanceDataService.createClass({ ...form, courseCode:form.courseCode.trim().toUpperCase(), className:form.className.trim(), department:form.department.trim(), semester:form.semester.trim(), room:form.room.trim(), facultyId:user.id, facultyName:user.name });
       navigate('/classes');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create class in Supabase');
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create the class. Please try again.'); }
+    finally { setSubmitting(false); }
   };
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Back button and page title */}
-      <div>
-        <button
-          onClick={() => navigate('/classes')}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#9AB9EC] hover:text-[#B4CBF5] mb-2"
-        >
-          <ArrowLeft size={14} />
-          <span>Back to Classes</span>
-        </button>
-        <h1 className="text-2xl font-bold text-[#F4F5F7] tracking-tight">Create New Class</h1>
-        <p className="text-sm text-[#A8B9D0] mt-1">
-          Configure a course cohort, establish scheduling metadata, and automatically generate a student enrollment code.
-        </p>
-      </div>
-
-      {error && (
-        <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 flex items-start gap-3">
-          <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-red-200">{error}</p>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Course Core Details Box */}
-        <div className="bg-[#12283D] border border-[#293D53] rounded-2xl p-6 space-y-5 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-[#293D53]/60 pb-3">
-            <BookOpen size={18} className="text-[#9AB9EC]" />
-            <h2 className="text-sm font-bold text-[#F4F5F7] uppercase tracking-wider">
-              Course Information
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Course Code <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.courseCode}
-                onChange={(e) => setFormData({ ...formData, courseCode: e.target.value.toUpperCase() })}
-                placeholder="e.g. CS201"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] font-mono focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Class / Subject Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.className}
-                onChange={(e) => setFormData({ ...formData, className: e.target.value })}
-                placeholder="e.g. Data Structures & Algorithms"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Department / Program <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                placeholder="e.g. Computer Science & Engineering"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Semester / Academic Group <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.semester}
-                onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
-                placeholder="e.g. 3rd Semester - Section A"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Schedule & Location Box */}
-        <div className="bg-[#12283D] border border-[#293D53] rounded-2xl p-6 space-y-5 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-[#293D53]/60 pb-3">
-            <Clock size={18} className="text-[#9AB9EC]" />
-            <h2 className="text-sm font-bold text-[#F4F5F7] uppercase tracking-wider">
-              Schedule & Venue
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Room / Venue <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.room}
-                onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                placeholder="e.g. Lab 3B • Room 402"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Start Time <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                placeholder="10:00 AM"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                End Time <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                placeholder="11:30 AM"
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Class Type
-              </label>
-              <select
-                value={formData.classType}
-                onChange={(e) => setFormData({ ...formData, classType: e.target.value as any })}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              >
-                <option value="Theory">Theory Lecture</option>
-                <option value="Practical">Practical Laboratory</option>
-                <option value="Seminar">Seminar / Tutorial</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Academic Credits
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={8}
-                value={formData.credits}
-                onChange={(e) => setFormData({ ...formData, credits: parseInt(e.target.value) || 4 })}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-              Class Description (Optional)
-            </label>
-            <textarea
-              rows={3}
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Outline course objectives, prerequisites, or syllabus..."
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#081B2A] border border-[#293D53] text-sm text-[#F4F5F7] focus:outline-none focus:border-[#9AB9EC]"
-            />
-          </div>
-        </div>
-
-        {/* Enrollment Code Preview Box */}
-        <div className="p-5 rounded-2xl bg-[#081B2A] border border-[#293D53] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <span className="text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles size={14} className="text-[#9AB9EC]" />
-              Unique Student Enrollment Code Preview
-            </span>
-            <p className="text-xl font-mono font-bold tracking-widest text-[#9AB9EC] mt-1">
-              {previewCode}
-            </p>
-            <p className="text-xs text-[#7F94B0] mt-0.5">
-              A 4-digit unique numeric security suffix will be assigned upon creation.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/classes')}
-              className="px-4 py-2.5 rounded-lg bg-[#182D43] hover:bg-[#202D39] border border-[#293D53] text-xs font-semibold text-[#A8B9D0] transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-6 py-2.5 rounded-lg bg-[#F3F2EF] hover:bg-white text-[#101D2C] text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-            >
-              {submitting ? (
-                <span>Registering Class...</span>
-              ) : (
-                <>
-                  <Check size={16} />
-                  <span>Create Class & Save</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  );
-};
+  return <div className="page-stack"><PageHeading eyebrow="TEACHING" title="Create a class" description="Start with the essentials. You can share the enrollment code once it’s ready."
+    action={<Link className="p-button ghost small" to="/classes"><ArrowLeft size={13} />Back to classes</Link>} />
+    <div className="form-layout"><form className="form-body" onSubmit={submit}>
+      <div className="form-steps" aria-label="Class creation progress"><span className={step === 1 ? 'current' : 'complete'} aria-current={step === 1 ? 'step' : undefined}><span>{step > 1 ? <Check size={12} /> : '1'}</span>Course details</span><div /><span className={step === 2 ? 'current' : ''} aria-current={step === 2 ? 'step' : undefined}><span>2</span>Schedule & finish</span></div>
+      <InlineError message={error} />
+      {step === 1 ? <section className="panel form-section"><h2 className="section-heading"><BookOpen />Course details</h2><div className="field-grid">
+        <label className="field" htmlFor="course-code">Course code<input id="course-code" required minLength={2} maxLength={20} placeholder="e.g. CS201" value={form.courseCode} onChange={e => update('courseCode',e.target.value.toUpperCase())} autoFocus /></label>
+        <label className="field" htmlFor="class-type">Class type<select id="class-type" value={form.classType} onChange={e => update('classType',e.target.value)}><option>Theory</option><option>Practical</option><option>Seminar</option></select></label>
+        <label className="field col-span-2" htmlFor="class-name">Class name<input id="class-name" required minLength={2} maxLength={100} placeholder="e.g. Data Structures" value={form.className} onChange={e => update('className',e.target.value)} /></label>
+        <label className="field" htmlFor="department">Department<input id="department" required minLength={2} maxLength={100} value={form.department} onChange={e => update('department',e.target.value)} /></label>
+        <label className="field" htmlFor="semester">Semester / section<input id="semester" required minLength={2} maxLength={50} placeholder="e.g. Semester 3 · Section A" value={form.semester} onChange={e => update('semester',e.target.value)} /></label>
+      </div></section> : <><section className="panel form-section"><h2 className="section-heading"><CalendarClock />Schedule & location</h2><div className="field-grid">
+        <label className="field col-span-2" htmlFor="room">Room / venue<input id="room" required maxLength={100} placeholder="e.g. Room 305" value={form.room} onChange={e => update('room',e.target.value)} autoFocus /></label>
+        <label className="field" htmlFor="start-time">Start time<input id="start-time" type="time" required value={form.startTime} onChange={e => update('startTime',e.target.value)} /></label>
+        <label className="field" htmlFor="end-time">End time<input id="end-time" type="time" required value={form.endTime} onChange={e => update('endTime',e.target.value)} /></label>
+      </div></section><Disclosure title="Additional details" description="Credits and an optional course description"><div className="field-grid">
+        <label className="field" htmlFor="credits">Academic credits<input id="credits" type="number" min={1} max={10} value={form.credits} onChange={e => update('credits',Number(e.target.value))} /></label>
+        <label className="field col-span-2" htmlFor="description">Description <span className="field-note">Optional · up to 500 characters</span><textarea id="description" rows={3} maxLength={500} placeholder="A short introduction to the course…" value={form.description} onChange={e => update('description',e.target.value)} /></label>
+      </div></Disclosure></>}
+      <div className="form-footer">{step === 1 ? <Link className="p-button secondary" to="/classes">Cancel</Link> : <button className="p-button secondary" type="button" disabled={submitting} onClick={() => { setStep(1); setError(null); }}><ArrowLeft size={13} />Back</button>}
+        <button type="submit" className="p-button" disabled={submitting}>{submitting ? 'Creating…' : step === 1 ? 'Continue' : 'Create class'}{step === 1 ? <ArrowRight size={14} /> : <Check size={14} />}</button></div>
+    </form><aside className="panel form-preview"><p className="eyebrow">CLASS PREVIEW</p><span className="course-badge">{form.courseCode || 'COURSE CODE'}</span><h2 className="preview-course">{form.className || 'Your class name'}</h2><p>{form.department || 'Department'}<br />{form.semester || 'Semester / section'}</p><div className="preview-rule" /><div className="flex items-center gap-2 mb-2"><KeyRound size={15} className="text-indigo-300" /><h2>Ready to share</h2></div><p>A unique enrollment code is created when you save. Find it by opening the class.</p></aside></div>
+  </div>;
+}

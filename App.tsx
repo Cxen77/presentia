@@ -67,6 +67,9 @@ import * as studentApi from './src/services/api';
 import { authErrorMessage } from './src/services/authErrors';
 import { registerStudent } from './src/services/registration';
 import { EmailVerificationForm } from './src/components/EmailVerificationForm';
+import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
+import { uploadCloudinaryImage, uploadImageToCloudinary } from './src/services/cloudinary';
+export { uploadImageToCloudinary } from './src/services/cloudinary';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -175,7 +178,7 @@ export { supabase, isSupabaseConfigured };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
-export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl?: string }) {
+export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
@@ -203,51 +206,6 @@ export async function submitAttendanceApi(data: { qrToken: string; verificationP
   return res.json();
 }
 
-// Cloudinary unsigned upload service
-const CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || '';
-const UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || '';
-
-export const uploadImageToCloudinary = async (
-  imageUri: string,
-  onProgress?: (progress: number) => void
-): Promise<string> => {
-  if (!CLOUD_NAME || !UPLOAD_PRESET || CLOUD_NAME === 'your-cloudinary-cloud-name') {
-    return imageUri; // Local fallback
-  }
-
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-  const formData = new FormData();
-
-  if (Platform.OS === 'web') {
-    if (imageUri.startsWith('data:')) {
-      formData.append('file', imageUri);
-    } else {
-      try {
-        const response = await fetch(imageUri);
-        const blob = await response.blob();
-        formData.append('file', blob, 'profile_photo.jpg');
-      } catch {
-        formData.append('file', imageUri);
-      }
-    }
-  } else {
-    const filename = imageUri.split('/').pop() || 'photo.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
-    formData.append('file', { uri: imageUri, name: filename, type } as any);
-  }
-
-  formData.append('upload_preset', UPLOAD_PRESET);
-  formData.append('folder', 'student_profiles');
-
-  if (onProgress) onProgress(40);
-  const res = await fetch(endpoint, { method: 'POST', body: formData });
-  if (onProgress) onProgress(90);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || 'Cloudinary upload failed');
-  if (onProgress) onProgress(100);
-  return data.secure_url;
-};
 
 class StudentService {
   async getProfile(): Promise<StudentProfile | null> {
@@ -918,9 +876,10 @@ export const ClassDetailsModal: React.FC<{
 export const QRScannerModal: React.FC<{
   visible: boolean;
   studentProfileId: string;
+  profileAvatarUri?: string;
   onClose: () => void;
   onClassEnrolled: () => void;
-}> = ({ visible, studentProfileId, onClose, onClassEnrolled }) => {
+}> = ({ visible, studentProfileId, profileAvatarUri, onClose, onClassEnrolled }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [detectedClass, setDetectedClass] = useState<DatabaseClass | null>(null);
@@ -930,6 +889,7 @@ export const QRScannerModal: React.FC<{
   const [enrolling, setEnrolling] = useState(false);
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
   const [attendanceSuccess, setAttendanceSuccess] = useState(false);
+  const [selfieVisible, setSelfieVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -939,6 +899,7 @@ export const QRScannerModal: React.FC<{
       setNotice(null);
       setErrorMsg(null);
       setAttendanceSuccess(false);
+      setSelfieVisible(false);
     }
   }, [visible]);
 
@@ -953,6 +914,7 @@ export const QRScannerModal: React.FC<{
       setDetectedAttendance(null);
     } else if (res.type === 'attendance_session' && res.attendanceToken) {
       setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode });
+      setSelfieVisible(true);
       setDetectedClass(null);
       setNotice(res.message || 'Live attendance QR code verified.');
     } else {
@@ -974,35 +936,20 @@ export const QRScannerModal: React.FC<{
     }
   };
 
-  const confirmAttendanceSubmission = async () => {
-    if (!detectedAttendance) return;
-    if (!isSupabaseConfigured()) {
-      Alert.alert('Supabase Not Configured', 'Configure Supabase before submitting attendance.');
-      return;
-    }
+  const submitAttendanceSelfie = async (photoUri: string) => {
+    if (!detectedAttendance) throw new Error('Scan the attendance QR again before sending your selfie.');
     setSubmittingAttendance(true);
     try {
-      await submitAttendanceApi({ qrToken: detectedAttendance.token });
+      const receipt = await uploadCloudinaryImage(photoUri, 'attendance_verification');
+      await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature });
       setAttendanceSuccess(true);
-      Alert.alert(
-        'Check-In Submitted!',
-        'Your attendance has been submitted and is currently awaiting instructor verification.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              onClassEnrolled();
-              onClose();
-            },
-          },
-        ]
-      );
-    } catch (err: any) {
-      Alert.alert('Attendance Submission Failed', err.message || 'Unable to submit attendance.');
-    } finally {
-      setSubmittingAttendance(false);
-    }
+    } finally { setSubmittingAttendance(false); }
   };
+
+  if (!visible) return null;
+  if (selfieVisible && detectedAttendance) {
+    return <SelfieCheckInModal courseCode={detectedAttendance.courseCode} profileAvatarUri={profileAvatarUri} onClose={() => setSelfieVisible(false)} onSubmit={submitAttendanceSelfie} onComplete={() => { onClassEnrolled(); onClose(); }} />;
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -1057,11 +1004,11 @@ export const QRScannerModal: React.FC<{
                 {detectedAttendance.courseCode ? `Course: ${detectedAttendance.courseCode}` : 'Live Attendance Session'}
               </Text>
               <Text style={{ color: '#8EA5C2', fontSize: 11, marginBottom: 12 }}>
-                Token: {detectedAttendance.token.slice(0, 24)}...
+                Take a fresh selfie for your faculty to compare with your profile photo.
               </Text>
               <TouchableOpacity
                 style={[styles.confirmJoinBtn, { backgroundColor: '#4ADE80' }]}
-                onPress={confirmAttendanceSubmission}
+                onPress={() => setSelfieVisible(true)}
                 disabled={submittingAttendance || attendanceSuccess}
               >
                 {submittingAttendance ? (
@@ -1069,7 +1016,7 @@ export const QRScannerModal: React.FC<{
                 ) : attendanceSuccess ? (
                   <Text style={styles.confirmJoinText}>✓ Submitted (Awaiting Verification)</Text>
                 ) : (
-                  <Text style={styles.confirmJoinText}>Confirm & Submit Check-In</Text>
+                  <Text style={styles.confirmJoinText}>Take attendance selfie</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1949,6 +1896,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
       <QRScannerModal
         visible={qrModalVisible}
         studentProfileId={activeStudent.id}
+        profileAvatarUri={activeStudent.avatarUrl}
         onClose={() => setQrModalVisible(false)}
         onClassEnrolled={loadData}
       />
@@ -2405,6 +2353,7 @@ export default function App() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [selfiePreviewVisible, setSelfiePreviewVisible] = useState(false);
   const signingOut = useRef(false);
 
   useEffect(() => {
@@ -2525,6 +2474,8 @@ export default function App() {
         <View style={styles.mobileViewport}>
           {renderActiveScreen()}
         </View>
+        {__DEV__ && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Preview selfie screen" testID="open-selfie-preview" onPress={() => setSelfiePreviewVisible(true)} style={{ position:'absolute', right:14, bottom:88, flexDirection:'row', gap:7, alignItems:'center', backgroundColor:'#252a35', borderColor:'#505b72', borderWidth:1, paddingHorizontal:12, paddingVertical:10, borderRadius:24 }}><Camera size={15} color="#d9ddf0" /><Text style={{ color:'#e0e3ee', fontSize:11, fontWeight:'600' }}>Preview selfie</Text></TouchableOpacity>}
+        {__DEV__ && selfiePreviewVisible && <SelfieCheckInModal previewMode onClose={() => setSelfiePreviewVisible(false)} />}
       </View>
     </SafeAreaProvider>
   );

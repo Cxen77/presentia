@@ -40,19 +40,19 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#061522] flex items-center justify-center p-4 selection:bg-[#9AB9EC]/30">
-      <div className="w-full max-w-md">
+    <div className="login-layout">
+      <div className="w-full max-w-[370px]">
         {/* Portal Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#12283D] border border-[#293D53] text-[#9AB9EC] mb-4 shadow-xl">
-            <GraduationCap size={36} strokeWidth={1.8} />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#172333] border border-[#273548] text-[#b5bafa] mb-4 shadow-xl">
+            <GraduationCap size={25} strokeWidth={1.8} />
           </div>
-          <h1 className="text-2xl font-bold text-[#F4F5F7] tracking-tight">Faculty Attendance Portal</h1>
-          <p className="text-sm text-[#A8B9D0] mt-1.5">Authorized Instructor & Academic Staff Access</p>
+          <h1 className="text-xl font-semibold text-[#eef2f8] tracking-tight">Faculty workspace</h1>
+          <p className="text-sm text-[#9aabc1] mt-1.5">Your classes and attendance, in one place.</p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#081B2A] border border-[#293D53] rounded-2xl p-7 shadow-2xl">
+        <div className="bg-[#111b28] border border-[#273548] rounded-xl p-5 shadow-sm">
           {error && (
             <div className="mb-5 p-3.5 rounded-lg bg-red-950/40 border border-red-500/40 flex items-start gap-3">
               <ShieldAlert size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
@@ -65,7 +65,7 @@ export const LoginPage: React.FC = () => {
             type="button"
             onClick={handleGoogleLogin}
             disabled={googleLoading || loading}
-            className="w-full py-2.5 px-4 rounded-lg bg-[#12283D] hover:bg-[#1a3754] border border-[#293D53] text-sm font-medium text-[#F4F5F7] transition-all flex items-center justify-center gap-3 shadow-sm hover:border-[#9AB9EC]/50 disabled:opacity-50"
+            className="w-full py-2.5 px-4 rounded-lg bg-[#172333] hover:bg-[#1a3754] border border-[#273548] text-sm font-medium text-[#eef2f8] transition-all flex items-center justify-center gap-3 shadow-sm hover:border-[#b5bafa]/50 disabled:opacity-50"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -90,44 +90,44 @@ export const LoginPage: React.FC = () => {
 
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#293D53]"></div>
+              <div className="w-full border-t border-[#273548]"></div>
             </div>
             <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-              <span className="bg-[#081B2A] px-2 text-[#7F94B0]">Or Sign In with Password</span>
+              <span className="bg-[#111b28] px-2 text-[#74869d]">Or Sign In with Password</span>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
-                Institutional Email
+              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
+                Email address
               </label>
               <div className="relative">
-                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7F94B0]" />
+                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="faculty@institution.edu"
-                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#12283D] border border-[#293D53] text-sm text-[#F4F5F7] placeholder-[#7F94B0] focus:outline-none focus:border-[#9AB9EC] transition-colors"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus:border-[#b5bafa] transition-colors"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#A8B9D0] uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
                 Password
               </label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7F94B0]" />
+                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
-                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#12283D] border border-[#293D53] text-sm text-[#F4F5F7] placeholder-[#7F94B0] focus:outline-none focus:border-[#9AB9EC] transition-colors"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus:border-[#b5bafa] transition-colors"
                 />
               </div>
             </div>
@@ -153,8 +153,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Security Warning */}
         <div className="mt-6 text-center">
-          <p className="text-xs text-[#7F94B0] leading-relaxed max-w-sm mx-auto">
-            Protected academic system. Student enrollment and mobile QR scans must be conducted via the student mobile application.
+          <p className="text-xs text-[#74869d] leading-relaxed max-w-sm mx-auto">
+            Use your faculty account and app password. Student accounts use the student app.
           </p>
         </div>
       </div>
