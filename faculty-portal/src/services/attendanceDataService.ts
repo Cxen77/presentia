@@ -351,8 +351,9 @@ class AttendanceDataService {
     };
 
     if (isSupabaseConfigured()) {
-      try {
-        const { error } = await supabase.from('classes').insert({
+      const { data: savedClass, error } = await supabase
+        .from('classes')
+        .insert({
           course_code: newClass.courseCode,
           class_name: newClass.className,
           department: newClass.department,
@@ -363,11 +364,22 @@ class AttendanceDataService {
           class_type: newClass.classType,
           credits: newClass.credits,
           is_active: true,
-        });
-        if (error) console.warn('Supabase insert class error:', error.message);
-      } catch (err) {
-        console.warn('Supabase insert class network error:', err);
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST205') {
+          throw new Error(
+            'Supabase database tables are missing. Run supabase/full_setup.sql in the Supabase SQL Editor, then try again.'
+          );
+        }
+        throw new Error(`Failed to save class to Supabase: ${error.message}`);
       }
+
+      newClass.id = savedClass.id;
+      newClass.enrollmentCode = savedClass.enrollment_code;
+      newClass.createdAt = savedClass.created_at;
     }
 
     const classes = await this.getClasses();

@@ -124,7 +124,7 @@ export const JoinClassModal: React.FC<JoinClassModalProps> = ({
             <Text style={styles.inputLabel}>CLASS CODE</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. CS201-DS"
+              placeholder="e.g. CS209-7294"
               placeholderTextColor="#476587"
               value={classCode}
               onChangeText={(text) => {
@@ -139,7 +139,7 @@ export const JoinClassModal: React.FC<JoinClassModalProps> = ({
               onSubmitEditing={handleJoin}
             />
             <Text style={styles.inputHint}>
-              Format: 6-10 characters (e.g. CS201-DS, CS203-DB, CS205-OS, CS207-CN)
+              Use the enrollment code from the faculty portal (e.g. CS209-7294). A course code like CS203 works only when it matches one active class.
             </Text>
           </View>
 

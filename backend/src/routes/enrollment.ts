@@ -5,6 +5,8 @@ import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 const router = Router();
+const missingSchemaMessage =
+  'Supabase database tables are missing. Run supabase/full_setup.sql in the Supabase SQL Editor, then try again.';
 
 const joinClassSchema = z.object({
   enrollmentCode: z.string().min(1).max(30),
@@ -93,7 +95,7 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
   const code = parsed.data.enrollmentCode.trim().toUpperCase();
 
   // Find the class
-  const { data: cls, error: classError } = await supabaseAdmin
+  const { data: enrollmentMatch, error: classError } = await supabaseAdmin
     .from('classes')
     .select('*')
     .eq('enrollment_code', code)
@@ -101,7 +103,33 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     .maybeSingle();
 
   if (classError) {
+    if (classError.code === 'PGRST205') {
+      return res.status(503).json({ error: missingSchemaMessage });
+    }
     return res.status(500).json({ error: 'Failed to look up class' });
+  }
+
+  let cls = enrollmentMatch;
+  if (!cls) {
+    const { data: courseMatches, error: courseError } = await supabaseAdmin
+      .from('classes')
+      .select('*')
+      .eq('course_code', code)
+      .eq('is_active', true)
+      .limit(2);
+
+    if (courseError) {
+      if (courseError.code === 'PGRST205') {
+        return res.status(503).json({ error: missingSchemaMessage });
+      }
+      return res.status(500).json({ error: 'Failed to look up class' });
+    }
+    if (courseMatches && courseMatches.length > 1) {
+      return res.status(409).json({
+        error: `Course code "${code}" matches multiple classes. Use the unique enrollment code shown in the faculty portal.`,
+      });
+    }
+    cls = courseMatches?.[0] || null;
   }
 
   if (!cls) {
@@ -111,12 +139,18 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
   }
 
   // Check for existing enrollment
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from('class_enrollments')
     .select('id, status')
     .eq('student_id', user.profileId)
     .eq('class_id', cls.id)
     .maybeSingle();
+
+  if (existingError) {
+    return res.status(existingError.code === 'PGRST205' ? 503 : 500).json({
+      error: existingError.code === 'PGRST205' ? missingSchemaMessage : 'Failed to check enrollment',
+    });
+  }
 
   if (existing) {
     if (existing.status === 'active') {
@@ -125,10 +159,16 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
       });
     }
     // Re-activate a previously dropped enrollment
-    await supabaseAdmin
+    const { error: reactivateError } = await supabaseAdmin
       .from('class_enrollments')
       .update({ status: 'active' })
       .eq('id', existing.id);
+
+    if (reactivateError) {
+      return res.status(reactivateError.code === 'PGRST205' ? 503 : 500).json({
+        error: reactivateError.code === 'PGRST205' ? missingSchemaMessage : 'Failed to reactivate enrollment',
+      });
+    }
 
     return res.json({
       message: `Re-enrolled in ${cls.class_name}`,

@@ -5,6 +5,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const LOCAL_STORAGE_KEY_PROFILE = 'class_attendance_student_profile';
 const LOCAL_STORAGE_KEY_ENROLLMENTS = 'class_attendance_enrolled_classes';
 
+const getSupabaseErrorMessage = (error: { code?: string; message: string }): string => {
+  if (error.code === 'PGRST205') {
+    return 'Supabase database tables are missing. Run supabase/full_setup.sql in the Supabase SQL Editor, then try again.';
+  }
+  return error.message;
+};
+
 // Seed classes for development / offline fallback
 export const SEED_CLASSES: DatabaseClass[] = [
   {
@@ -292,7 +299,7 @@ class StudentService {
     if (isSupabaseConfigured()) {
       try {
         // 1. Check if class exists and is active
-        const { data: classData, error: classError } = await supabase
+        const { data: enrollmentMatch, error: classError } = await supabase
           .from('classes')
           .select('*')
           .eq('enrollment_code', cleanedCode)
@@ -300,7 +307,30 @@ class StudentService {
           .maybeSingle();
 
         if (classError) {
-          return { success: false, error: classError.message };
+          return { success: false, error: getSupabaseErrorMessage(classError) };
+        }
+
+        let classData: DatabaseClass | null = enrollmentMatch;
+
+        // Course codes are accepted only when they identify a single active class.
+        if (!classData) {
+          const { data: courseMatches, error: courseError } = await supabase
+            .from('classes')
+            .select('*')
+            .eq('course_code', cleanedCode)
+            .eq('is_active', true)
+            .limit(2);
+
+          if (courseError) {
+            return { success: false, error: getSupabaseErrorMessage(courseError) };
+          }
+          if (courseMatches && courseMatches.length > 1) {
+            return {
+              success: false,
+              error: `Course code "${cleanedCode}" matches multiple classes. Use the unique enrollment code shown in the faculty portal.`,
+            };
+          }
+          classData = courseMatches?.[0] || null;
         }
 
         if (!classData) {
@@ -311,12 +341,16 @@ class StudentService {
         }
 
         // 2. Check if student is already enrolled
-        const { data: existingEnrollment } = await supabase
+        const { data: existingEnrollment, error: existingEnrollmentError } = await supabase
           .from('class_enrollments')
           .select('id, status')
           .eq('student_id', studentProfileId)
           .eq('class_id', classData.id)
           .maybeSingle();
+
+        if (existingEnrollmentError) {
+          return { success: false, error: getSupabaseErrorMessage(existingEnrollmentError) };
+        }
 
         if (existingEnrollment) {
           if (existingEnrollment.status === 'active') {
@@ -327,11 +361,14 @@ class StudentService {
             };
           }
           // If previously dropped, re-activate enrollment
-          await supabase
+          const { error: reactivateError } = await supabase
             .from('class_enrollments')
             .update({ status: 'active' })
             .eq('id', existingEnrollment.id);
 
+          if (reactivateError) {
+            return { success: false, error: getSupabaseErrorMessage(reactivateError) };
+          }
           return { success: true, classData };
         }
 
@@ -345,7 +382,7 @@ class StudentService {
           });
 
         if (enrollError) {
-          return { success: false, error: enrollError.message };
+            return { success: false, error: getSupabaseErrorMessage(enrollError) };
         }
 
         return { success: true, classData };
@@ -355,10 +392,20 @@ class StudentService {
     }
 
     // Local fallback for offline/development: match against seed classes
-    const foundSeed = SEED_CLASSES.find(
-      (c) => c.enrollment_code.toUpperCase() === cleanedCode
+    const matchingSeeds = SEED_CLASSES.filter(
+      (c) =>
+        c.enrollment_code.toUpperCase() === cleanedCode ||
+        c.course_code.toUpperCase() === cleanedCode
     );
 
+    if (matchingSeeds.length > 1) {
+      return {
+        success: false,
+        error: `Course code "${cleanedCode}" matches multiple classes. Use the unique enrollment code shown in the faculty portal.`,
+      };
+    }
+
+    const foundSeed = matchingSeeds[0];
     if (!foundSeed) {
       return {
         success: false,

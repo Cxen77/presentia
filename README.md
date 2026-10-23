@@ -95,13 +95,9 @@ A production-grade React Native & Expo application strictly recreating the visua
 
 ## 🗄️ Supabase Database Setup
 
-1. Open your Supabase SQL Editor.
-2. Execute `supabase/schema.sql` to establish base tables (`profiles`, `classes`, `class_enrollments`, `class_invitations`).
-3. Execute `supabase/migration_001_attendance.sql` to apply the attendance system:
-   - Extends `classes` with faculty ownership (`faculty_id`)
-   - Creates `attendance_sessions`, `qr_tokens`, and `attendance_records`
-   - Configures strict Row-Level Security (RLS) policies
-   - Enables Supabase Realtime publication on `attendance_records`
+1. Open the SQL Editor for the same Supabase project configured in the app and faculty portal.
+2. Run `supabase/full_setup.sql`. This creates the profile, class, enrollment, and attendance tables, applies their Row-Level Security policies, and seeds the default enrollment codes.
+3. Confirm the SQL completes successfully before creating classes or joining with a code. The faculty portal must save a class to Supabase for its enrollment code to work in the student app.
 
 ---
 
@@ -167,4 +163,3 @@ The repository includes a ready-to-use `render.yaml` blueprint.
    - `CLOUDINARY_API_KEY`
    - `CLOUDINARY_API_SECRET`
    - `ALLOWED_ORIGINS` (your faculty portal URL + student app origins)
-
