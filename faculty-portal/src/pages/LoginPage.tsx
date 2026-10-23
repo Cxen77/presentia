@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import {supabase} from '../services/supabase';
 
 export const LoginPage: React.FC = () => {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle,refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -12,6 +13,9 @@ export const LoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [verifyMode,setVerifyMode]=useState(false),[verificationEmail,setVerificationEmail]=useState(''),[code,setCode]=useState(''),[message,setMessage]=useState<string|null>(null);
+  const verify=async(e:React.FormEvent)=>{e.preventDefault();setLoading(true);setError(null);try{const {error}=await supabase.auth.verifyOtp({email:verificationEmail.trim(),token:code.trim(),type:'signup'});if(error)throw error;await refreshUser();navigate('/');}catch(e){setError(e instanceof Error?e.message:'Could not verify email.');}finally{setLoading(false);}};
+  const resend=async()=>{if(!verificationEmail.includes('@')){setError('Enter the email address for this account.');return;}setLoading(true);setError(null);try{const {error}=await supabase.auth.resend({type:'signup',email:verificationEmail.trim()});if(error)throw error;setMessage('A fresh confirmation code has been sent. Check your inbox and spam.');}catch(e){setError(e instanceof Error?e.message:'Could not send confirmation.');}finally{setLoading(false);}};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +51,7 @@ export const LoginPage: React.FC = () => {
           <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#172333] border border-[#273548] text-[#b5bafa] mb-4 shadow-xl">
             <GraduationCap size={25} strokeWidth={1.8} />
           </div>
-          <h1 className="text-xl font-semibold text-[#eef2f8] tracking-tight">Faculty workspace</h1>
+          <h1 className="text-xl font-semibold text-[#eef2f8] tracking-tight">Staff workspace</h1>
           <p className="text-sm text-[#9aabc1] mt-1.5">Your classes and attendance, in one place.</p>
         </div>
 
@@ -60,6 +64,7 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
+          {verifyMode?<form onSubmit={verify} className="space-y-4"><h2 className="text-base font-semibold">Verify your email</h2><p className="text-xs text-slate-400">Use the code from your confirmation email. Your account role is assigned by the administrator.</p>{message&&<p role="status" className="text-xs text-emerald-300">{message}</p>}<label className="field">Account email<input type="email" required autoComplete="email" value={verificationEmail} onChange={e=>setVerificationEmail(e.target.value)}/></label><label className="field">Confirmation code<input required inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))}/></label><button disabled={loading} type="submit" className="p-button w-full">{loading?'Please wait…':'Verify & continue'}</button><button type="button" className="p-button secondary w-full" disabled={loading} onClick={()=>void resend()}>Resend code</button><button type="button" className="p-button ghost w-full" onClick={()=>setVerifyMode(false)}>Back to sign in</button></form>:<>
           {/* Google Sign In */}
           <button
             type="button"
@@ -100,16 +105,17 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
-                Email address
+                Faculty ID or email
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
-                  type="email"
+                  type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="faculty@institution.edu"
+                  placeholder="FAC-XXXXXXXX or staff email"
                   className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus:border-[#b5bafa] transition-colors"
                 />
               </div>
@@ -141,20 +147,20 @@ export const LoginPage: React.FC = () => {
                 <span>Authenticating...</span>
               ) : (
                 <>
-                  <span>Sign In as Faculty</span>
+                  <span>Sign in to workspace</span>
                   <ArrowRight size={16} />
                 </>
               )}
             </button>
           </form>
-
-
+          <button type="button" className="p-button ghost w-full mt-3" onClick={()=>{setVerifyMode(true);setVerificationEmail(email.includes('@')?email:'');setError(null);}}>Verify email / enter confirmation code</button>
+          </>}
         </div>
 
         {/* Security Warning */}
         <div className="mt-6 text-center">
           <p className="text-xs text-[#74869d] leading-relaxed max-w-sm mx-auto">
-            Use your faculty account and app password. Student accounts use the student app.
+            Faculty and administrators use this portal. Student accounts use the student app.
           </p>
         </div>
       </div>

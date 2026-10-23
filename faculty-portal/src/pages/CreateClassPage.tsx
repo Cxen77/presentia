@@ -1,22 +1,26 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect,useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
+import {getManagedPeople,type ManagedPerson} from '../services/api';
 export function CreateClassPage() {
   const { user } = useAuth(); const navigate = useNavigate();
   const [step, setStep] = useState(1); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null);
+  const [faculty,setFaculty]=useState<ManagedPerson[]>([]),[facultyId,setFacultyId]=useState('');
+  useEffect(()=>{if(user?.role==='admin')void getManagedPeople().then(people=>setFaculty(people.filter(p=>p.role==='faculty'))).catch(e=>setError(e.message));},[user?.role]);
   const [form, setForm] = useState({ courseCode:'', className:'', department:user?.department || '', semester:'', room:'', startTime:'', endTime:'', classType:'Theory' as 'Theory'|'Practical'|'Seminar', credits:4, description:'' });
   const update = (key: keyof typeof form, value: string | number) => setForm(previous => ({ ...previous, [key]:value }));
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError(null);
     if (step === 1) { setStep(2); return; }
     if (!user) { setError('Please sign in before creating a class.'); return; }
+    if(user.role==='admin'&&!facultyId){setError('Assign this class to a faculty account.');return;}
     if (form.endTime <= form.startTime) { setError('End time must be later than start time.'); return; }
     setSubmitting(true);
     try {
-      await attendanceDataService.createClass({ ...form, courseCode:form.courseCode.trim().toUpperCase(), className:form.className.trim(), department:form.department.trim(), semester:form.semester.trim(), room:form.room.trim(), facultyId:user.id, facultyName:user.name });
+      await attendanceDataService.createClass({ ...form, courseCode:form.courseCode.trim().toUpperCase(), className:form.className.trim(), department:form.department.trim(), semester:form.semester.trim(), room:form.room.trim(), facultyId:user.role==='admin'?facultyId:user.id, facultyName:user.name });
       navigate('/classes');
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create the class. Please try again.'); }
     finally { setSubmitting(false); }
@@ -26,6 +30,7 @@ export function CreateClassPage() {
     <div className="form-layout"><form className="form-body" onSubmit={submit}>
       <div className="form-steps" aria-label="Class creation progress"><span className={step === 1 ? 'current' : 'complete'} aria-current={step === 1 ? 'step' : undefined}><span>{step > 1 ? <Check size={12} /> : '1'}</span>Course details</span><div /><span className={step === 2 ? 'current' : ''} aria-current={step === 2 ? 'step' : undefined}><span>2</span>Schedule & finish</span></div>
       <InlineError message={error} />
+      {user?.role==='admin'&&<label className="field panel p-4">Assigned faculty<select required value={facultyId} onChange={e=>setFacultyId(e.target.value)}><option value="">Choose faculty…</option>{faculty.map(person=><option key={person.id} value={person.id}>{person.name} · {person.loginId}</option>)}</select></label>}
       {step === 1 ? <section className="panel form-section"><h2 className="section-heading"><BookOpen />Course details</h2><div className="field-grid">
         <label className="field" htmlFor="course-code">Course code<input id="course-code" required minLength={2} maxLength={20} placeholder="e.g. CS201" value={form.courseCode} onChange={e => update('courseCode',e.target.value.toUpperCase())} autoFocus /></label>
         <label className="field" htmlFor="class-type">Class type<select id="class-type" value={form.classType} onChange={e => update('classType',e.target.value)}><option>Theory</option><option>Practical</option><option>Seminar</option></select></label>

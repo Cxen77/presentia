@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Copy, Check, RefreshCw, QrCode, Users } from 'lucide-react';
-import type { ClassItem, StudentProfile } from '../types';
+import type { ClassItem, StudentProfile, GeofencePolicy } from '../types';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { Dialog, Disclosure, InlineError } from '../components/ui/PortalUI';
+import {useAuth} from '../context/AuthContext';
+import {GeofencePanel} from '../components/GeofencePanel';
 interface Props { classItem: ClassItem; onClose: () => void; onStartAttendance: (classId: string) => Promise<void> }
 export function ClassDetailsModal({ classItem, onClose, onStartAttendance }: Props) {
+  const {user}=useAuth();const [geofence,setGeofence]=useState<GeofencePolicy>(classItem.geofence||{enabled:false});
   const [tab, setTab] = useState<'details' | 'students'>('details');
   const [code, setCode] = useState(classItem.enrollmentCode); const [copied, setCopied] = useState(false);
   const [students, setStudents] = useState<StudentProfile[]>([]); const [loading, setLoading] = useState(false);
@@ -25,12 +28,13 @@ export function ClassDetailsModal({ classItem, onClose, onStartAttendance }: Pro
     catch (err) { setError(err instanceof Error ? err.message : 'Unable to regenerate code.'); }
     finally { setBusy(false); }
   };
-  return <Dialog title={classItem.className} subtitle={classItem.courseCode} onClose={onClose} footer={<><button className="p-button secondary" onClick={onClose}>Close</button><button className="p-button" disabled={busy} onClick={async () => { setBusy(true); setError(null); try { await onStartAttendance(classItem.id); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to start attendance.'); } finally { setBusy(false); } }}><QrCode size={14} />{busy ? 'Please wait…' : 'Take attendance'}</button></>}>
+  return <Dialog title={classItem.className} subtitle={classItem.courseCode} onClose={onClose} footer={<><button className="p-button secondary" onClick={onClose}>Close</button>{user?.role==='faculty'&&<button className="p-button" disabled={busy} onClick={async () => { setBusy(true); setError(null); try { await onStartAttendance(classItem.id); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to start attendance.'); } finally { setBusy(false); } }}><QrCode size={14} />{busy ? 'Please wait…' : 'Take attendance'}</button>}</>}>
     <div className="flex gap-2" role="group" aria-label="Class view"><button className={`p-button small ${tab === 'details' ? '' : 'secondary'}`} aria-pressed={tab === 'details'} onClick={() => setTab('details')}>Overview</button><button className={`p-button small ${tab === 'students' ? '' : 'secondary'}`} aria-pressed={tab === 'students'} onClick={() => setTab('students')}><Users size={13} />Students {classItem.enrolledStudentsCount}</button></div>
     <InlineError message={error} />
     {tab === 'details' ? <><dl className="detail-grid">{[['Department',classItem.department],['Semester',classItem.semester],['Room',classItem.room],['Schedule',classItem.scheduleInfo],['Class type',classItem.classType],['Credits',String(classItem.credits)]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not set'}</dd></div>)}</dl>
       <Disclosure title="Enrollment code" description="Share with students to join this class"><div className="code-box"><div><span className="text-[10px]">CLASS CODE</span><code className="code-value">{code}</code></div><button className="p-button secondary small" onClick={copy}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Copied' : 'Copy code'}</button></div><button className="text-link mt-4" disabled={busy} onClick={regenerate}><RefreshCw size={12} />Generate a new code</button></Disclosure>
       {classItem.description && <Disclosure title="Course description"><p>{classItem.description}</p></Disclosure>}
+      <Disclosure title="Campus check-in area" description={geofence.enabled?'Campus restriction enabled':'Set a campus centre and radius'}><GeofencePanel classItem={{...classItem,geofence}} onSaved={setGeofence}/></Disclosure>
     </> : loading ? <p className="text-xs text-slate-400" role="status">Loading students…</p> : !students.length ? <div className="py-6 text-center"><Users size={24} className="mx-auto mb-3 text-slate-500" /><h3 className="text-sm">No students enrolled yet</h3><p className="mt-2 text-xs text-slate-400">Share the enrollment code from the Overview tab.</p></div> : <div className="roster-list">{students.map(student => <div className="roster-row" key={student.id}><div className="avatar-initial">{student.fullName.slice(0,1)}</div><div className="min-w-0 flex-1"><p className="text-xs font-medium">{student.fullName}</p><p className="truncate text-[10px] text-slate-400">{student.email}</p></div><span className="text-[11px] font-mono text-slate-400">{student.rollNumber}</span></div>)}</div>}
   </Dialog>;
 }

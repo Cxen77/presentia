@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import type { ClassItem } from '../types';
 import { ClassDetailsModal } from './ClassDetailsModal';
+import {EditClassDialog} from './EditClassDialog';
 import { EmptyState, InlineError, PageHeading } from '../components/ui/PortalUI';
 
 export function ClassesPage() {
@@ -13,6 +14,7 @@ export function ClassesPage() {
   const [search, setSearch] = useState(''); const [type, setType] = useState('ALL');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<ClassItem | null>(null);
+  const [editing,setEditing]=useState<ClassItem|null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!user) return;
@@ -27,7 +29,7 @@ export function ClassesPage() {
     await attendanceDataService.startSession(classId, user.id, user.name);
     navigate('/live-attendance');
   };
-  return <div className="page-stack"><PageHeading eyebrow="TEACHING" title="My classes" description="A place for every course. Open a class for its roster and enrollment code."
+  return <div className="page-stack"><PageHeading eyebrow="TEACHING" title={user?.role==='admin'?'All classes':'My classes'} description="A place for every course. Open a class for its roster and enrollment code."
     action={<Link className="p-button" to="/create-class"><Plus size={15} />Create class</Link>} />
     <InlineError message={error} />
     <div className="toolbar"><label className="search-field"><Search size={16} /><input aria-label="Search classes" placeholder="Search classes or course codes…" value={search} onChange={e => setSearch(e.target.value)} /></label>
@@ -40,7 +42,9 @@ export function ClassesPage() {
         <h2>{cls.className}</h2><p className="mt-1 text-[11px] text-slate-400">{cls.semester} · {cls.department}</p>
         <div className="class-card-meta"><span><Clock size={12} />{cls.scheduleInfo || 'Schedule not set'}</span>{cls.room && <span><MapPin size={12} />{cls.room}</span>}</div>
         <div className="class-card-footer"><span className="flex items-center gap-1.5 text-[11px] text-slate-400"><Users size={13} />{cls.enrolledStudentsCount ?? 0} enrolled</span><button className="p-button secondary small" onClick={() => setSelected(cls)} aria-label={`Open ${cls.className}`}>Open class<ArrowUpRight size={13} /></button></div>
+        <button className="text-link mt-3" onClick={()=>setEditing(cls)}>Edit class details</button>
       </article>)}</div>}
-    {selected && <ClassDetailsModal key={selected.id} classItem={selected} onClose={() => setSelected(null)} onStartAttendance={startAttendance} />}
+    {selected && <ClassDetailsModal key={selected.id} classItem={selected} onClose={() => {setSelected(null);void load();}} onStartAttendance={startAttendance} />}
+    {editing&&<EditClassDialog classItem={editing} onClose={()=>setEditing(null)} onSaved={()=>void load()}/>}
   </div>;
 }

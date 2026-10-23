@@ -69,10 +69,13 @@ import * as studentApi from './src/services/api';
 import { authErrorMessage } from './src/services/authErrors';
 import { registerStudent } from './src/services/registration';
 import { EmailVerificationForm } from './src/components/EmailVerificationForm';
+import { router } from 'expo-router';
+import { StudentClassCard } from './src/components/StudentClassCard';
 import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
 import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } from './src/components/StudentActivity';
 import { ProfileSettingsModal, type SettingsSection } from './src/components/ProfileSettingsModal';
 import { clearStudentCache } from './src/services/studentCache';
+import { getAttendanceLocation, warmGrantedLocation } from './src/services/checkInLocation';
 import { uploadCloudinaryImage, uploadImageToCloudinary } from './src/services/cloudinary';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
 
@@ -183,7 +186,7 @@ export { supabase, isSupabaseConfigured };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
-export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string; scanTicket: string }) {
+export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string; scanTicket: string; location:studentApi.CheckInLocation }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
@@ -660,43 +663,7 @@ export const StudentProfileCard: React.FC<{
   );
 };
 
-export const ClassCard: React.FC<{ item: ClassScheduleItem; onPressAction: () => void; onPressCard: () => void }> = ({
-  item,
-  onPressAction,
-  onPressCard,
-}) => {
-  const isDS = item.isHighlighted;
-  return (
-    <TouchableOpacity
-      style={[styles.classCard, isDS ? styles.highlightedCard : styles.charcoalCard]}
-      onPress={onPressCard}
-      activeOpacity={0.88}
-    >
-      <View style={[styles.classIconTile, isDS ? styles.iconTileSlate : styles.iconTileCharcoal]}>
-        {isDS ? <BarChart2 size={24} color="#B4CBF5" strokeWidth={2.2} /> : <BookOpen size={24} color="#8EA5C2" strokeWidth={2} />}
-      </View>
-      <View style={styles.classInfoColumn}>
-        <View style={styles.classHeaderRow}>
-          <Text style={[styles.classSubject, isDS ? styles.textWhite : styles.textPrimary]} numberOfLines={1}>{item.subject}</Text>
-          <View style={[styles.statusBadge, isDS ? styles.badgeAvailable : styles.badgeNotStarted]}>
-            <Text style={[styles.statusBadgeText, isDS ? styles.badgeTextAvailable : styles.badgeTextNotStarted]}>{item.status}</Text>
-          </View>
-        </View>
-        <Text style={styles.classCourseCode}>{item.courseCode} • {item.classType}</Text>
-        <View style={styles.classMetaRow}>
-          <View style={styles.metaItem}>
-            <Clock size={12} color="#8EA5C2" strokeWidth={2} style={{ marginRight: 4 }} />
-            <Text style={styles.metaText}>{item.timeSlot}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <MapPin size={12} color="#8EA5C2" strokeWidth={2} style={{ marginRight: 4 }} />
-            <Text style={styles.metaText}>{item.room}</Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
+export const ClassCard: React.FC<{ item: ClassScheduleItem; onPressAction: () => void; onPressCard: () => void }> = ({ item, onPressCard }) => <StudentClassCard item={item} onPress={onPressCard}/>;
 
 // ============================================================================
 // 5. MODALS (JOIN CLASS, CLASS DETAILS, QR SCANNER)
@@ -905,6 +872,7 @@ export const QRScannerModal: React.FC<{
       setErrorMsg(null);
       setAttendanceSuccess(false);
       setSelfieVisible(false);
+      void warmGrantedLocation().catch(()=>{});
     }
   }, [visible]);
 
@@ -919,7 +887,8 @@ export const QRScannerModal: React.FC<{
       setDetectedAttendance(null);
     } else if (res.type === 'attendance_session' && res.attendanceToken) {
       try {
-        const scan = await studentApi.validateAttendanceScan(res.attendanceToken);
+        const location=await getAttendanceLocation();
+        const scan = await studentApi.validateAttendanceScan(res.attendanceToken,location);
         setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode, ...scan });
         setSelfieVisible(true); setDetectedClass(null); setNotice('QR verified. Take your selfie within three minutes.');
       } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Could not validate this QR.'); }
@@ -948,7 +917,8 @@ export const QRScannerModal: React.FC<{
     setSubmittingAttendance(true);
     try {
       const receipt = await uploadCloudinaryImage(photoUri, 'attendance_verification');
-      await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature, scanTicket:detectedAttendance.scanTicket });
+      const location=await getAttendanceLocation(true);
+      await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature, scanTicket:detectedAttendance.scanTicket,location });
       setAttendanceSuccess(true);
     } finally { setSubmittingAttendance(false); }
   };
@@ -972,6 +942,7 @@ export const QRScannerModal: React.FC<{
             </TouchableOpacity>
           </View>
 
+          <Text style={{ color: '#91a5bf', fontSize: 11, lineHeight: 17, marginBottom: 12 }}>Attendance saves your location when you scan and send your selfie. Your teacher can review it with your check-in.</Text>
           {!permission?.granted ? (
             <View style={styles.cameraPlaceholderBox}>
               <Camera size={38} color="#9AB9EC" style={{ marginBottom: 10 }} />
@@ -1869,10 +1840,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
               <ClassCard
                 key={cls.id}
                 item={cls}
-                onPressCard={() => {
-                  setSelectedClass(cls);
-                  setDetailsModalVisible(true);
-                }}
+                onPressCard={() => router.push(`/classes/${cls.id}`)}
                 onPressAction={() => {
                   setSelectedClass(cls);
                   setDetailsModalVisible(true);
@@ -1915,12 +1883,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
 };
 
 // F. MY CLASSES SCREEN
-export const MyClassesScreen: React.FC = () => {
-  const [scannerProfile,setScannerProfile]=useState<StudentProfile|null>(null);
-  const [scannerOpen,setScannerOpen]=useState(false);
-  const openScanner=async()=>{try{const profile=await studentService.getProfile();if(!profile)throw new Error('Complete your student profile first.');setScannerProfile(profile);setScannerOpen(true);}catch(err){Alert.alert('Could not open scanner',err instanceof Error?err.message:'Please retry.');}};
-  return <AppBackground variant="dashboard"><StudentClassesView onScan={()=>void openScanner()}/>{scannerProfile&&<QRScannerModal visible={scannerOpen} studentProfileId={scannerProfile.id} profileAvatarUri={scannerProfile.avatarUrl} onClose={()=>setScannerOpen(false)} onClassEnrolled={()=>setScannerOpen(false)}/>}</AppBackground>;
-};
+export const MyClassesScreen: React.FC = () => <AppBackground variant="dashboard"><StudentClassesView/></AppBackground>;
 
 // G. ATTENDANCE SCREEN
 export const AttendanceScreen: React.FC = () => {
@@ -2441,8 +2404,8 @@ export default function App() {
         {/* Mobile Viewport Container */}
         <View style={styles.mobileViewport}>
           {renderActiveScreen()}
+          {currentScreen==='main'&&<AttendanceDecisionNotice/>}
         </View>
-        {currentScreen==='main'&&<AttendanceDecisionNotice/>}
       </View>
     </SafeAreaProvider>
   );

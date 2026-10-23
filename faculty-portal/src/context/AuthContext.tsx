@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { FacultyUser } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { getAuthMe } from '../services/api';
+import { getAuthMe, staffSignIn } from '../services/api';
 
 interface AuthContextType {
   user: FacultyUser | null;
@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  refreshUser:()=>Promise<void>;
 }
 
 const STORAGE_KEY_FACULTY_AUTH = 'faculty_portal_current_user_v1';
@@ -27,7 +28,9 @@ function buildFacultyUser(profile: any): FacultyUser {
     department: profile.degree || profile.department || 'Computer Science & Engineering',
     title: 'Professor',
     avatarUrl: profile.avatarUrl || profile.avatar_url || undefined,
-    role: 'faculty',
+    role: profile.role,
+    loginId:profile.rollNumber,
+    requiresPasswordChange:profile.requiresPasswordChange===true,
   };
 }
 
@@ -110,7 +113,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!email.trim() || !password) {
         return { success: false, error: 'Enter your email and app password.' };
       }
-      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      let data,error;
+      if(email.includes('@'))({data,error}=await supabase.auth.signInWithPassword({ email: email.trim(), password }));
+      else {const session=await staffSignIn(email.trim(),password);({data,error}=await supabase.auth.setSession(session));}
       if (error) return { success: false, error: error.message };
       if (!data.session || !data.user) {
         return { success: false, error: 'No authenticated session was returned. Please sign in again.' };
@@ -172,7 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, isLoading, login, loginWithGoogle, logout }}
+      value={{ user, isAuthenticated: !!user, isLoading, login, loginWithGoogle, logout, refreshUser:loadUserFromSession }}
     >
       {children}
     </AuthContext.Provider>

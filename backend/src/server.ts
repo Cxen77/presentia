@@ -14,6 +14,7 @@ import sessionRoutes from './routes/sessions';
 import attendanceRoutes from './routes/attendance';
 import reportRoutes from './routes/reports';
 import cloudinaryRoutes from './routes/cloudinary';
+import managementRoutes from './routes/management';
 
 const app = express();
 
@@ -46,6 +47,7 @@ app.use((req, _res, next) => {
 // --- Routes ---
 app.use('/', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/management',managementRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/enrollment', enrollmentRoutes);

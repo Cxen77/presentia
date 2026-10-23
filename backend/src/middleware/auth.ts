@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   email: string;
   role: 'student' | 'faculty' | 'admin';
   fullName: string;
+  requiresPasswordChange:boolean;
 }
 
 // Extend Express Request to carry authenticated user info
@@ -67,7 +68,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       email: profile?.email || user.email || '',
       role: (profile?.role as 'student' | 'faculty' | 'admin') || 'student',
       fullName: profile?.full_name || '',
+      requiresPasswordChange:user.app_metadata?.must_change_password===true,
     };
+
+    if(req.user.requiresPasswordChange&&!['/api/auth/me','/api/auth/initial-password'].includes(req.originalUrl.split('?')[0]))return res.status(403).json({error:'Change your initial password before accessing the portal.',code:'PASSWORD_CHANGE_REQUIRED'});
 
     next();
   } catch (err) {

@@ -171,13 +171,18 @@ export async function submitAttendance(data: {
   verificationPhotoUrl: string;
   verificationPhotoSignature: string;
   scanTicket: string;
+  location: CheckInLocation;
 }) {
   return apiRequest('/api/attendance/submit', { method: 'POST', body: data });
 }
 
-export async function validateAttendanceScan(qrToken: string) {
-  return apiRequest<{scanTicket:string;expiresAt:number;sessionId:string}>('/api/attendance/scan',{method:'POST',body:{qrToken}});
+export interface CheckInLocation {latitude:number;longitude:number;accuracy:number;capturedAt:number;platform:'android'|'ios'|'web';mocked:boolean|null;developerOptions:'unavailable'}
+export async function validateAttendanceScan(qrToken: string,location:CheckInLocation) {
+  return apiRequest<{scanTicket:string;expiresAt:number;sessionId:string}>('/api/attendance/scan',{method:'POST',body:{qrToken,location}});
 }
+
+export interface CalendarSession {sessionId:string;date:string;startTime:string;endTime:string;status:'PRESENT'|'ABSENT'|'PENDING'|'OPEN';reason:string|null;verifiedAt:string|null}
+export async function getClassCalendar(classId:string,month:string){return apiRequest<CalendarSession[]>(`/api/attendance/my-calendar/${encodeURIComponent(classId)}?month=${encodeURIComponent(month)}`);}
 
 export interface MyAttendanceRecord { id:string; classId:string; sessionId:string; status:'PENDING'|'PRESENT'|'REJECTED'; className:string; courseCode:string; date:string; submittedAt:string; verifiedAt?:string; rejectionReason?:string }
 

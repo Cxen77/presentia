@@ -30,6 +30,16 @@
           "cameraPermission": "Allow Presentia to use your camera for QR scans and attendance selfies.",
           "recordAudioAndroid": false
         }
+      ],
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Presentia to record your location when you scan and submit attendance.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
       ]
     ]
   }

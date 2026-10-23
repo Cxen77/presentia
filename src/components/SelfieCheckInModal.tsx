@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Image, Modal, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
+import {SelfieSubmissionCard} from './SelfieSubmissionCard';
 import Svg, { Path } from 'react-native-svg';
-import { ArrowUp, Camera, Check, RotateCcw, Sun, SunMoon, SwitchCamera, UserRound, X } from 'lucide-react-native';
+import { ArrowUp, Camera, RotateCcw, Sun, SunMoon, SwitchCamera, UserRound, X } from 'lucide-react-native';
 
 interface SelfieCheckInModalProps {
   onClose: () => void;
@@ -87,7 +88,7 @@ export function SelfieCheckInModal({ onClose, previewMode = false, courseCode, p
       </View>
       {previewMode && <View style={s.previewBadge}><View style={s.previewDot} /><Text style={s.previewBadgeText}>DESIGN PREVIEW</Text></View>}
       <View style={s.cameraArea}>
-        {sent ? <View style={s.sentContent}><View style={s.sentIcon}><Check size={28 * scale} color="#d3f6b3" /></View><Text style={[s.sentTitle, { fontSize: 21 * scale }]}>{previewMode ? 'That’s the flow.' : 'You’re all set.'}</Text><Text style={[s.sentDescription, { fontSize: 12 * scale }]}>{previewMode ? 'No photo was uploaded.\nNo attendance was marked.' : 'Your selfie is with your faculty.\nYour attendance is awaiting review.'}</Text><TouchableOpacity accessibilityRole="button" onPress={close} style={s.doneButton}><Text style={s.doneText}>Done</Text></TouchableOpacity></View> : <>
+        {sent ? <SelfieSubmissionCard photoUri={photoUri} courseCode={courseCode} preview={previewMode} onDone={close}/> : <>
           <View testID="selfie-camera-contour" style={[s.cameraWindow, { width: frameWidth * .83, height: frameWidth * .83 * 1.000611 }]}>
             {sample ? <Image source={sampleSource} style={[StyleSheet.absoluteFill, s.fullImage, s.sampleImage]} resizeMode="cover" /> : photoUri ? <Image source={{ uri: photoUri }} style={[StyleSheet.absoluteFill, s.fullImage]} resizeMode="cover" /> : cameraEnabled && permission?.granted && foreground ? <CameraView key={facing} ref={camera} style={StyleSheet.absoluteFill} facing={facing} mirror={facing === 'front'} mute mode="picture" onCameraReady={() => setReady(true)} onMountError={() => { setReady(false); setError('Your camera could not start. Check that another app is not using it.'); }} /> : <View style={s.cameraPlaceholder}><View style={s.faceOutline}><UserRound size={88 * scale} color="#33373d" strokeWidth={.7} /></View><TouchableOpacity accessibilityRole="button" onPress={enableCamera} style={s.enableButton}><Camera size={15} color="#17191b" /><Text style={s.enableText}>Enable camera</Text></TouchableOpacity></View>}
             {sample && <View style={s.sampleLabel}><Text style={s.sampleLabelText}>SAMPLE PHOTO · NOT UPLOADED</Text></View>}

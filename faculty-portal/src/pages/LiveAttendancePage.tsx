@@ -418,6 +418,7 @@ export const LiveAttendancePage: React.FC = () => {
                         </div>
 
                         {/* Decision Buttons */}
+                        {record.checkinLocation&&<details className="rounded-xl border border-[#31455e] bg-[#142535] p-3 text-xs"><summary className="cursor-pointer text-slate-300">Location · {record.checkinLocation.campusRestricted?`${record.checkinLocation.distanceM} m from campus centre`:'Campus restriction off'}</summary><div className="mt-3 space-y-2 text-slate-400"><p>Device: {record.checkinLocation.submission.platform} · GPS accuracy ±{Math.round(record.checkinLocation.submission.accuracy)} m</p><p>Mock GPS: {record.checkinLocation.submission.mocked===false?'not reported by device':'check unavailable'} · Developer Options: unavailable</p><p>Scan: {record.checkinLocation.scan.latitude.toFixed(5)}, {record.checkinLocation.scan.longitude.toFixed(5)}</p><p>Submission: {record.checkinLocation.submission.latitude.toFixed(5)}, {record.checkinLocation.submission.longitude.toFixed(5)}</p><p>Received {new Date(record.checkinLocation.receivedAt).toLocaleTimeString()}</p></div></details>}
                         <div className="grid grid-cols-2 gap-3 pt-2">
                           <button
                             disabled={!!deciding}

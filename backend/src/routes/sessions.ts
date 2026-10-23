@@ -398,6 +398,7 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     verifiedBy: r.verified_by,
     verifiedAt: r.verified_at,
     rejectionReason: r.rejection_reason,
+    checkinLocation:r.checkin_location || null,
   }));
 
   return res.json(formatted);

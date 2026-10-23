@@ -9,9 +9,12 @@ import { ClassesPage } from './pages/ClassesPage';
 import { CreateClassPage } from './pages/CreateClassPage';
 import { LiveAttendancePage } from './pages/LiveAttendancePage';
 import { ReportsPage } from './pages/ReportsPage';
+import {PeoplePage} from './pages/PeoplePage';
+import {StaffProfilePage} from './pages/StaffProfilePage';
+import {InitialPasswordPage} from './pages/InitialPasswordPage';
 
 const ProtectedRoute: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -27,9 +30,13 @@ const ProtectedRoute: React.FC = () => {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+  if(user?.requiresPasswordChange)return <InitialPasswordPage/>;
 
   return <Outlet />;
 };
+
+function AdminRoute(){const {user}=useAuth();return user?.role==='admin'?<PeoplePage admin/>:<Navigate to="/" replace/>;}
+function HomeRoute(){const {user}=useAuth();return user?.role==='admin'?<Navigate to="/admin" replace/>:<DashboardPage/>;}
 
 const AppLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -59,7 +66,10 @@ const App: React.FC = () => {
 
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
+              <Route path="/" element={<HomeRoute />} />
+              <Route path="/admin" element={<AdminRoute/>}/>
+              <Route path="/students" element={<PeoplePage/>}/>
+              <Route path="/profile" element={<StaffProfilePage/>}/>
               <Route path="/classes" element={<ClassesPage />} />
               <Route path="/create-class" element={<CreateClassPage />} />
               <Route path="/live-attendance" element={<LiveAttendancePage />} />

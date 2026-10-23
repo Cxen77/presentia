@@ -7,7 +7,9 @@ export interface FacultyUser {
   department: string;
   title: string;
   avatarUrl?: string;
-  role: 'faculty';
+  role: 'faculty'|'admin';
+  loginId?:string;
+  requiresPasswordChange?:boolean;
 }
 
 export interface StudentProfile {
@@ -23,6 +25,7 @@ export interface StudentProfile {
 }
 
 export interface ClassItem {
+  geofence?:GeofencePolicy;
   id: string;
   courseCode: string;
   className: string;
@@ -67,6 +70,7 @@ export interface AttendanceSession {
 export type AttendanceRecordStatus = 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED';
 
 export interface AttendanceRecord {
+  checkinLocation?:{scan:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null};submission:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null;developerOptions:string};campusRestricted:boolean;distanceM:number|null;receivedAt:number}|null;
   id: string;
   sessionId: string;
   classId: string;
@@ -82,6 +86,8 @@ export interface AttendanceRecord {
   verifiedAt?: string;
   rejectionReason?: string;
 }
+
+export type GeofencePolicy={enabled:false}|{enabled:true;latitude:number;longitude:number;radiusM:number};
 
 export interface QRTokenPayload {
   sessionId: string;
