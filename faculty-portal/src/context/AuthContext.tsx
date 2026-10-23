@@ -41,18 +41,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const loadUserFromSession = useCallback(async () => {
     if (!isSupabaseConfigured()) {
-      // Offline/demo mode — restore from localStorage
-      const stored = localStorage.getItem(STORAGE_KEY_FACULTY_AUTH);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (parsed && parsed.role === 'faculty') {
-            setUser(parsed);
-          }
-        } catch {
-          localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
-        }
-      }
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
       setIsLoading(false);
       return;
     }
@@ -71,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!profile.role || (profile.role !== 'faculty' && profile.role !== 'admin')) {
         // Not a faculty account — sign out
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         setUser(null);
         localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
         setIsLoading(false);
@@ -83,13 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
     } catch (err) {
       console.warn('Session load error:', err);
-      // Fall back to localStorage cache
-      const stored = localStorage.getItem(STORAGE_KEY_FACULTY_AUTH);
-      if (stored) {
-        try {
-          setUser(JSON.parse(stored));
-        } catch {}
-      }
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
     }
     setIsLoading(false);
   }, []);
@@ -100,7 +85,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for Supabase auth state changes (e.g., OAuth redirect return)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        loadUserFromSession();
+        // Auth listeners run while the client processes its session lock.
+        setTimeout(() => { void loadUserFromSession(); }, 0);
       } else {
         setUser(null);
         localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
@@ -115,91 +101,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-
-    if (isSupabaseConfigured() && password) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: password.trim() });
-        if (error) {
-          // If demo instructor credentials or tables not yet seeded, allow demo fallback
-          const isDemoFaculty = email.toLowerCase().includes('sengupta') || email.toLowerCase().includes('faculty') || email.toLowerCase().includes('demo');
-          if (isDemoFaculty) {
-            console.warn('Supabase auth returned error for demo account, proceeding with demo faculty session:', error.message);
-          } else {
-            setIsLoading(false);
-            return { success: false, error: `${error.message}. (Note: If your database tables/users are not created yet, log in with r.sengupta@institution.edu)` };
-          }
-        } else if (data.user) {
-          // Verify role via backend
-          try {
-            const profile = await getAuthMe();
-            if (profile.role !== 'faculty' && profile.role !== 'admin') {
-              await supabase.auth.signOut();
-              setIsLoading(false);
-              return { success: false, error: 'Access denied: Only verified faculty accounts may log into this portal.' };
-            }
-
-            const facultyObj = buildFacultyUser(profile);
-            setUser(facultyObj);
-            localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
-            setIsLoading(false);
-            return { success: true };
-          } catch (apiErr: any) {
-            // If backend is not reachable, fall through to check profiles table directly
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('user_id', data.user.id)
-              .single();
-
-            if (profileData && profileData.role !== 'faculty' && profileData.role !== 'admin') {
-              await supabase.auth.signOut();
-              setIsLoading(false);
-              return { success: false, error: 'Access denied: Only verified faculty accounts may log into this portal.' };
-            }
-
-            const facultyObj: FacultyUser = {
-              id: profileData?.id || data.user.id,
-              name: profileData?.full_name || 'Faculty Member',
-              email: data.user.email || email,
-              department: profileData?.degree || 'Computer Science & Engineering',
-              title: 'Professor',
-              avatarUrl: profileData?.avatar_url,
-              role: 'faculty',
-            };
-
-            setUser(facultyObj);
-            localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
-            setIsLoading(false);
-            return { success: true };
-          }
-        }
-      } catch (err: any) {
-        console.warn('Supabase auth failed:', err);
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
+    try {
+      if (!isSupabaseConfigured()) {
+        return { success: false, error: 'Supabase is not configured.' };
       }
-    }
-
-    // Offline / Demo mode fallback
-    if (email.toLowerCase().includes('student')) {
+      if (!email.trim() || !password) {
+        return { success: false, error: 'Enter your email and app password.' };
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) return { success: false, error: error.message };
+      if (!data.session || !data.user) {
+        return { success: false, error: 'No authenticated session was returned. Please sign in again.' };
+      }
+      const profile = await getAuthMe();
+      if (profile.role !== 'faculty' && profile.role !== 'admin') {
+        await supabase.auth.signOut({ scope: 'local' });
+        return { success: false, error: 'Access denied: Only verified faculty accounts may log into this portal.' };
+      }
+      const facultyObj = buildFacultyUser(profile);
+      setUser(facultyObj);
+      localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
+      return { success: true };
+    } catch (err: any) {
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
+      return { success: false, error: err.message || 'Unable to verify faculty access. Please try again.' };
+    } finally {
       setIsLoading(false);
-      return {
-        success: false,
-        error: 'Student credentials cannot be used to log into the Faculty Portal. Please use the mobile app.',
-      };
     }
-
-    const facultyObj: FacultyUser = {
-      id: 'demo-faculty-01',
-      name: email.includes('@') ? email.split('@')[0].replace('.', ' ').toUpperCase() : 'Prof. R. Sengupta',
-      email: email.trim(),
-      department: 'Computer Science & Engineering',
-      title: 'Associate Professor & HOD',
-      role: 'faculty',
-    };
-
-    setUser(facultyObj);
-    localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
-    setIsLoading(false);
-    return { success: true };
   };
 
   /**
@@ -232,7 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     if (isSupabaseConfigured()) {
       try {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
       } catch {}
     }
     setUser(null);
@@ -253,3 +184,4 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
+

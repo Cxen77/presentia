@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, ShieldAlert, CheckCircle, ArrowRight } from 'lucide-react';
+import { GraduationCap, Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('r.sengupta@institution.edu');
-  const [password, setPassword] = useState('faculty@pass123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -37,16 +37,6 @@ export const LoginPage: React.FC = () => {
       setGoogleLoading(false);
     }
     // If successful, user is redirected by OAuth provider
-  };
-
-  const handleQuickDemoLogin = async () => {
-    setError(null);
-    setLoading(true);
-    const result = await login('r.sengupta@institution.edu', 'faculty@pass123');
-    setLoading(false);
-    if (result.success) {
-      navigate('/');
-    }
   };
 
   return (
@@ -158,20 +148,7 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Sign In Box */}
-          <div className="mt-6 pt-5 border-t border-[#293D53]/60">
-            <p className="text-[11px] font-medium text-[#7F94B0] mb-2.5 uppercase tracking-wider text-center">
-              One-Click Demonstration Access
-            </p>
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="w-full py-2.5 px-3 rounded-lg bg-[#12283D] hover:bg-[#182D43] border border-[#293D53] text-xs font-medium text-[#9AB9EC] transition-colors flex items-center justify-center gap-2"
-            >
-              <CheckCircle size={15} className="text-emerald-400" />
-              <span>Log In as Prof. R. Sengupta (Faculty Lead)</span>
-            </button>
-          </div>
+
         </div>
 
         {/* Security Warning */}

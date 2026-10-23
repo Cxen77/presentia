@@ -38,3 +38,5 @@ A real Gmail signup, email confirmation, exact-password login, authenticated use
 Open Create Account at the local app, enter an inbox you control and a new app password, and enter the emailed verification code. Complete setup using your own unique roll number. Sign out and sign in again with that same email and app password; the existing profile should open the dashboard. Never use your Gmail mailbox password as an app password.
 
 Reference: https://supabase.com/docs/guides/auth/quickstarts/react-native
+
+The faculty portal's demo credential shortcut and cached-user authentication fallback were also removed. It now requires a real session and backend-verified faculty/admin role. A student account cannot become faculty through a client fallback; role rejection signs out only the portal session.
