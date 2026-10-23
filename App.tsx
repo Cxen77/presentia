@@ -14,6 +14,7 @@ import {
   Animated,
   Dimensions,
   Modal,
+  AppState,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
@@ -56,6 +57,7 @@ import {
   X,
   Scan,
   TrendingUp,
+  RefreshCw,
 } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -68,6 +70,9 @@ import { authErrorMessage } from './src/services/authErrors';
 import { registerStudent } from './src/services/registration';
 import { EmailVerificationForm } from './src/components/EmailVerificationForm';
 import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
+import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } from './src/components/StudentActivity';
+import { ProfileSettingsModal, type SettingsSection } from './src/components/ProfileSettingsModal';
+import { clearStudentCache } from './src/services/studentCache';
 import { uploadCloudinaryImage, uploadImageToCloudinary } from './src/services/cloudinary';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
 
@@ -123,7 +128,7 @@ export const Typography = {
 // ============================================================================
 export type ScreenName = 'onboarding' | 'login' | 'register' | 'profile_setup' | 'main';
 export type TabName = 'home' | 'classes' | 'attendance' | 'profile';
-export type AttendanceStatus = 'Not Started' | 'Available' | 'Present' | 'Late' | 'Absent';
+export type AttendanceStatus = 'Not Started' | 'Available' | 'Present' | 'Late' | 'Absent' | 'Pending' | 'Rejected';
 
 export interface StudentProfile {
   id: string;
@@ -178,7 +183,7 @@ export { supabase, isSupabaseConfigured };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
-export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string }) {
+export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string; scanTicket: string }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
@@ -326,7 +331,7 @@ class StudentService {
       room: item.room || '',
       iconName: item.courseCode === 'CS201' ? 'chart' : 'book',
       isHighlighted: item.courseCode === 'CS201',
-      status: 'Not Started',
+      status: item.attendanceStatus==='PRESENT'?'Present':item.attendanceStatus==='PENDING'?'Pending':item.attendanceStatus==='REJECTED'?'Rejected':item.sessionStatus==='ACTIVE'?'Available':'Not Started',
       teacherName: item.teacherName,
       department: item.department,
       enrollmentCode: item.enrollmentCode,
@@ -883,7 +888,7 @@ export const QRScannerModal: React.FC<{
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [detectedClass, setDetectedClass] = useState<DatabaseClass | null>(null);
-  const [detectedAttendance, setDetectedAttendance] = useState<{ token: string; courseCode?: string } | null>(null);
+  const [detectedAttendance, setDetectedAttendance] = useState<{ token: string; courseCode?: string; scanTicket:string; expiresAt:number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [enrolling, setEnrolling] = useState(false);
@@ -913,10 +918,11 @@ export const QRScannerModal: React.FC<{
       setDetectedClass(res.classData);
       setDetectedAttendance(null);
     } else if (res.type === 'attendance_session' && res.attendanceToken) {
-      setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode });
-      setSelfieVisible(true);
-      setDetectedClass(null);
-      setNotice(res.message || 'Live attendance QR code verified.');
+      try {
+        const scan = await studentApi.validateAttendanceScan(res.attendanceToken);
+        setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode, ...scan });
+        setSelfieVisible(true); setDetectedClass(null); setNotice('QR verified. Take your selfie within three minutes.');
+      } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Could not validate this QR.'); }
     } else {
       setErrorMsg(res.message || 'Invalid QR code.');
     }
@@ -938,10 +944,11 @@ export const QRScannerModal: React.FC<{
 
   const submitAttendanceSelfie = async (photoUri: string) => {
     if (!detectedAttendance) throw new Error('Scan the attendance QR again before sending your selfie.');
+    if (Date.now() >= detectedAttendance.expiresAt) throw new Error('Check-in expired. Close the camera and scan the latest QR again.');
     setSubmittingAttendance(true);
     try {
       const receipt = await uploadCloudinaryImage(photoUri, 'attendance_verification');
-      await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature });
+      await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature, scanTicket:detectedAttendance.scanTicket });
       setAttendanceSuccess(true);
     } finally { setSubmittingAttendance(false); }
   };
@@ -1776,6 +1783,9 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
 
   useEffect(() => {
     loadData();
+    const timer=setInterval(()=>{if(AppState.currentState==='active')void loadData();},30000);
+    const listener=AppState.addEventListener('change',state=>{if(state==='active')void loadData();});
+    return()=>{clearInterval(timer);listener.remove();};
   }, [loadData]);
 
   if (!student) {
@@ -1906,59 +1916,23 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
 
 // F. MY CLASSES SCREEN
 export const MyClassesScreen: React.FC = () => {
-  const [classes, setClasses] = useState<ClassScheduleItem[]>([]);
-  useEffect(() => {
-    studentService.getEnrolledClasses().then(setClasses);
-  }, []);
-
-  return (
-    <AppBackground variant="dashboard">
-      <ScrollView contentContainerStyle={styles.screenPadding} showsVerticalScrollIndicator={false}>
-        <Text style={styles.screenHeading}>My Classes</Text>
-        <Text style={styles.screenSubheading}>Academic Schedule & Courses</Text>
-        <View style={{ gap: 12, marginTop: 16 }}>
-          {classes.length === 0 ? (
-            <Text style={{ color: '#7F94B0', marginTop: 20 }}>No classes enrolled yet.</Text>
-          ) : (
-            classes.map((c) => (
-              <View key={c.id} style={styles.charcoalClassBox}>
-                <Text style={styles.classSubject}>{c.subject}</Text>
-                <Text style={styles.classCourseCode}>{c.courseCode} • {c.teacherName || 'Faculty'}</Text>
-                <Text style={styles.metaText}>{c.timeSlot} • {c.room}</Text>
-              </View>
-            ))
-          )}
-        </View>
-        <View style={{ height: 90 }} />
-      </ScrollView>
-    </AppBackground>
-  );
+  const [scannerProfile,setScannerProfile]=useState<StudentProfile|null>(null);
+  const [scannerOpen,setScannerOpen]=useState(false);
+  const openScanner=async()=>{try{const profile=await studentService.getProfile();if(!profile)throw new Error('Complete your student profile first.');setScannerProfile(profile);setScannerOpen(true);}catch(err){Alert.alert('Could not open scanner',err instanceof Error?err.message:'Please retry.');}};
+  return <AppBackground variant="dashboard"><StudentClassesView onScan={()=>void openScanner()}/>{scannerProfile&&<QRScannerModal visible={scannerOpen} studentProfileId={scannerProfile.id} profileAvatarUri={scannerProfile.avatarUrl} onClose={()=>setScannerOpen(false)} onClassEnrolled={()=>setScannerOpen(false)}/>}</AppBackground>;
 };
 
 // G. ATTENDANCE SCREEN
 export const AttendanceScreen: React.FC = () => {
-  return (
-    <AppBackground variant="dashboard">
-      <ScrollView contentContainerStyle={styles.screenPadding} showsVerticalScrollIndicator={false}>
-        <Text style={styles.screenHeading}>Attendance</Text>
-        <Text style={styles.screenSubheading}>Semester Records & Statistics</Text>
-        <View style={styles.attendanceBanner}>
-          <Text style={styles.attendanceBannerTitle}>Attendance Records Notice</Text>
-          <Text style={styles.attendanceBannerText}>
-            Class enrollment and profile management are active. Attendance recording will be enabled in the upcoming faculty phase release.
-          </Text>
-        </View>
-        <View style={{ height: 90 }} />
-      </ScrollView>
-    </AppBackground>
-  );
+  return <AppBackground variant="dashboard"><StudentAttendanceView/></AppBackground>;
 };
 
 // H. PROFILE SCREEN
-export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:TabName)=>void }> = ({ onLogout, onNavigateTab }) => {
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [settingsSection,setSettingsSection]=useState<SettingsSection|null>(null);
 
   // Editable fields
   const [editMode, setEditMode] = useState(false);
@@ -1979,7 +1953,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
         setEditSem(p.semester || '');
       }
       setLoading(false);
-    });
+    }).catch(error=>{setFeedback({type:'error',message:error instanceof Error?error.message:'Could not load profile.'});setLoading(false);});
   }, []);
 
   const handleUpdatePhoto = async () => {
@@ -2000,13 +1974,14 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
         setUpdatingPhoto(true);
         const secureUrl = await uploadImageToCloudinary(localUri);
         if (student) {
-          await studentService.saveProfile({
+          const saved = await studentService.saveProfile({
             fullName: student.name,
             rollNumber: student.rollNumber,
             department: student.degree,
             semester: student.semester,
             avatarUrl: secureUrl,
           });
+          if (!saved.success) throw new Error(saved.error || 'Could not save the photo to your profile.');
           const updated = await studentService.getProfile();
           setStudent(updated);
         }
@@ -2066,18 +2041,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
     setFeedback(null);
   };
 
-  const profile = student || {
-    id: 'dev',
-    name: 'Aryan Sharma',
-    firstName: 'Aryan',
-    rollNumber: 'CS24123',
-    degree: 'B.Tech Computer Science',
-    semester: '3rd Semester',
-    avatarUrl: 'assets/aryan.jpg',
-    attendancePercent: 0,
-    totalClasses: 0,
-    presentToday: 0,
-  };
+  const profile = student;
 
   if (loading) {
     return (
@@ -2088,6 +2052,8 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
       </AppBackground>
     );
   }
+
+  if (!profile) return <AppBackground variant="dashboard"><View style={styles.screenPadding}><Text style={styles.screenHeading}>Profile unavailable</Text><Text style={styles.errorText}>{feedback?.message || 'Sign in again to restore your student profile.'}</Text><TouchableOpacity onPress={onLogout}><Text style={{color:'#b9d1f5',marginTop:20}}>Return to sign in</Text></TouchableOpacity></View></AppBackground>;
 
   return (
     <AppBackground variant="dashboard">
@@ -2232,20 +2198,20 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
             <View style={styles.profileMenuSection}>
               <Text style={styles.profileSectionTitle}>Academic Profile</Text>
               <View style={styles.profileMenuBox}>
-                <View style={[styles.profileMenuItem, styles.profileMenuItemBorder]}>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>onNavigateTab('classes')} style={[styles.profileMenuItem, styles.profileMenuItemBorder]}>
                   <View style={styles.profileMenuItemLeft}>
                     <GraduationCap size={20} color="#9AB9EC" strokeWidth={2} style={{ marginRight: 14 }} />
                     <Text style={styles.profileMenuItemLabel}>Course Enrollment • {profile.semester || '3rd Sem'}</Text>
                   </View>
                   <ChevronRight size={18} color="#7F94B0" strokeWidth={2.2} />
-                </View>
-                <View style={styles.profileMenuItem}>
+                </TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>setEditMode(true)} style={styles.profileMenuItem}>
                   <View style={styles.profileMenuItemLeft}>
                     <BookOpen size={20} color="#9AB9EC" strokeWidth={2} style={{ marginRight: 14 }} />
                     <Text style={styles.profileMenuItemLabel}>{profile.degree || 'Department'}</Text>
                   </View>
                   <ChevronRight size={18} color="#7F94B0" strokeWidth={2.2} />
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -2253,21 +2219,22 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
             <View style={styles.profileMenuSection}>
               <Text style={styles.profileSectionTitle}>Preferences & Security</Text>
               <View style={styles.profileMenuBox}>
-                <TouchableOpacity style={[styles.profileMenuItem, styles.profileMenuItemBorder]} activeOpacity={0.7}>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>setSettingsSection('security')} style={[styles.profileMenuItem, styles.profileMenuItemBorder]} activeOpacity={0.7}>
                   <View style={styles.profileMenuItemLeft}>
                     <Shield size={20} color="#9AB9EC" strokeWidth={2} style={{ marginRight: 14 }} />
-                    <Text style={styles.profileMenuItemLabel}>Security & Supabase Auth</Text>
+                    <Text style={styles.profileMenuItemLabel}>Account & security</Text>
                   </View>
                   <ChevronRight size={18} color="#7F94B0" strokeWidth={2.2} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.profileMenuItem, styles.profileMenuItemBorder]} activeOpacity={0.7}>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>setSettingsSection('alerts')} style={[styles.profileMenuItem, styles.profileMenuItemBorder]} activeOpacity={0.7}>
                   <View style={styles.profileMenuItemLeft}>
                     <Bell size={20} color="#9AB9EC" strokeWidth={2} style={{ marginRight: 14 }} />
-                    <Text style={styles.profileMenuItemLabel}>Push Notifications & Alerts</Text>
+                    <Text style={styles.profileMenuItemLabel}>Attendance alerts</Text>
                   </View>
                   <ChevronRight size={18} color="#7F94B0" strokeWidth={2.2} />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.profileMenuItem} activeOpacity={0.7}>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>setSettingsSection('storage')} style={[styles.profileMenuItem,styles.profileMenuItemBorder]} activeOpacity={0.7}><View style={styles.profileMenuItemLeft}><RefreshCw size={20} color="#9AB9EC" style={{marginRight:14}}/><Text style={styles.profileMenuItemLabel}>Storage & cache</Text></View><ChevronRight size={18} color="#7F94B0"/></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" onPress={()=>setSettingsSection('help')} style={styles.profileMenuItem} activeOpacity={0.7}>
                   <View style={styles.profileMenuItemLeft}>
                     <HelpCircle size={20} color="#9AB9EC" strokeWidth={2} style={{ marginRight: 14 }} />
                     <Text style={styles.profileMenuItemLabel}>Help Desk & Campus Admin</Text>
@@ -2297,6 +2264,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
         </TouchableOpacity>
         <View style={{ height: 90 }} />
       </ScrollView>
+      {settingsSection&&<ProfileSettingsModal section={settingsSection} onClose={()=>setSettingsSection(null)}/>}
     </AppBackground>
   );
 };
@@ -2353,7 +2321,6 @@ export default function App() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [authError, setAuthError] = useState('');
-  const [selfiePreviewVisible, setSelfiePreviewVisible] = useState(false);
   const signingOut = useRef(false);
 
   useEffect(() => {
@@ -2392,6 +2359,7 @@ export default function App() {
         setCurrentScreen('login');
         setCheckingAuth(false);
         void AsyncStorage.multiRemove(['app_student_profile', 'app_enrolled_classes', 'class_attendance_student_profile', 'class_attendance_enrolled_classes']);
+        void clearStudentCache();
       } else if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
         setTimeout(() => { if (active) void restoreSession(); }, 0);
       }
@@ -2458,7 +2426,7 @@ export default function App() {
             {currentTab === 'home' && <HomeScreen onLogout={handleLogout} onNavigateTab={setCurrentTab} />}
             {currentTab === 'classes' && <MyClassesScreen />}
             {currentTab === 'attendance' && <AttendanceScreen />}
-            {currentTab === 'profile' && <ProfileScreen onLogout={handleLogout} />}
+            {currentTab === 'profile' && <ProfileScreen onLogout={handleLogout} onNavigateTab={setCurrentTab} />}
             <BottomNavigation currentTab={currentTab} onSelectTab={setCurrentTab} />
           </View>
         );
@@ -2474,8 +2442,7 @@ export default function App() {
         <View style={styles.mobileViewport}>
           {renderActiveScreen()}
         </View>
-        {__DEV__ && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Preview selfie screen" testID="open-selfie-preview" onPress={() => setSelfiePreviewVisible(true)} style={{ position:'absolute', right:14, bottom:88, flexDirection:'row', gap:7, alignItems:'center', backgroundColor:'#252a35', borderColor:'#505b72', borderWidth:1, paddingHorizontal:12, paddingVertical:10, borderRadius:24 }}><Camera size={15} color="#d9ddf0" /><Text style={{ color:'#e0e3ee', fontSize:11, fontWeight:'600' }}>Preview selfie</Text></TouchableOpacity>}
-        {__DEV__ && selfiePreviewVisible && <SelfieCheckInModal previewMode onClose={() => setSelfiePreviewVisible(false)} />}
+        {currentScreen==='main'&&<AttendanceDecisionNotice/>}
       </View>
     </SafeAreaProvider>
   );

@@ -33,6 +33,7 @@ function parseAttendanceAsset(value: string) {
 
 /** Verify Cloudinary's upload receipt without fetching arbitrary user URLs. */
 export function isOwnedAttendancePhoto(value: string, userId: string, receiptSignature: string) {
+  if (!isCloudinaryConfigured()) return false;
   const asset = parseAttendanceAsset(value);
   if (!asset || !asset.publicId.startsWith(`attendance_verification/${userId}/`)) return false;
   const expected = cloudinary.utils.api_sign_request({ public_id: asset.publicId, version: asset.version }, env.CLOUDINARY_API_SECRET);

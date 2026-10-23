@@ -137,6 +137,8 @@ export async function getActiveSession() {
   return apiRequest('/api/sessions/active');
 }
 
+export async function getSessions() { return apiRequest('/api/sessions'); }
+
 export async function rotateQRToken(sessionId: string) {
   return apiRequest(`/api/sessions/${sessionId}/rotate-token`, { method: 'POST' });
 }

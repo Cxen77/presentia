@@ -13,6 +13,15 @@ const startSessionSchema = z.object({
   classId: z.string().uuid(),
 });
 
+router.get('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) => {
+  const user = req.user!;
+  const query = supabaseAdmin.from('attendance_sessions').select('*, class:class_id(course_code,class_name,room), faculty:faculty_id(full_name)').order('created_at', { ascending: false }).limit(200);
+  if (user.role !== 'admin') query.eq('faculty_id', user.profileId);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: 'Could not load attendance sessions.' });
+  return res.json((data || []).map((s: any) => ({ id:s.id, classId:s.class_id, facultyId:s.faculty_id, facultyName:s.faculty?.full_name || '', courseCode:s.class?.course_code || '', className:s.class?.class_name || '', room:s.class?.room || '', date:s.date, startTime:s.start_time || '', endTime:s.end_time || '', status:s.status, currentToken:'', tokenExpiresAt:0, tokenRotationCount:s.token_rotation_count, createdAt:s.created_at, closedAt:s.closed_at })));
+});
+
 /**
  * Generates a cryptographically secure QR token string.
  */

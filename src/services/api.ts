@@ -19,6 +19,9 @@ export interface EnrolledClassResponse {
   department: string;
   enrollmentCode: string;
   credits: number;
+  sessionId?: string;
+  sessionStatus?: 'ACTIVE' | 'AWAITING_VERIFICATION' | 'CLOSED';
+  attendanceStatus?: 'PENDING' | 'PRESENT' | 'REJECTED';
 }
 
 export interface JoinedClassResponse {
@@ -167,12 +170,19 @@ export async function submitAttendance(data: {
   qrToken: string;
   verificationPhotoUrl: string;
   verificationPhotoSignature: string;
+  scanTicket: string;
 }) {
   return apiRequest('/api/attendance/submit', { method: 'POST', body: data });
 }
 
+export async function validateAttendanceScan(qrToken: string) {
+  return apiRequest<{scanTicket:string;expiresAt:number;sessionId:string}>('/api/attendance/scan',{method:'POST',body:{qrToken}});
+}
+
+export interface MyAttendanceRecord { id:string; classId:string; sessionId:string; status:'PENDING'|'PRESENT'|'REJECTED'; className:string; courseCode:string; date:string; submittedAt:string; verifiedAt?:string; rejectionReason?:string }
+
 export async function getMyAttendanceRecords() {
-  return apiRequest('/api/attendance/my-records');
+  return apiRequest<MyAttendanceRecord[]>('/api/attendance/my-records');
 }
 
 // =============================================================================

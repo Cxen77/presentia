@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
-import { isOwnedAttendancePhoto } from '../services/cloudinary';
+import { isCloudinaryConfigured, isOwnedAttendancePhoto } from '../services/cloudinary';
+import { createScanTicket, verifyScanTicket } from '../services/scanTicket';
 
 const router = Router();
 
@@ -11,11 +12,31 @@ const submitSchema = z.object({
   qrToken: z.string().min(1),
   verificationPhotoUrl: z.string().url().max(2048),
   verificationPhotoSignature: z.string().regex(/^[a-f0-9]{40}$/i),
+  scanTicket: z.string().min(1).max(2048),
 });
 
 const verifySchema = z.object({
   status: z.enum(['PRESENT', 'REJECTED']),
   rejectionReason: z.string().max(200).optional(),
+});
+
+// Validate the rotating QR at scan time; the selfie must arrive within three minutes.
+router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
+  if (!isCloudinaryConfigured()) return res.status(503).json({error:'Photo uploads are not configured yet. Please contact your teacher.'});
+  const user = req.user!;
+  const parsed = z.object({ qrToken: z.string().min(1).max(512) }).safeParse(req.body);
+  if (!parsed.success || !user.profileId) return res.status(400).json({ error: 'Complete your profile and scan a valid attendance QR.' });
+  const { data: token, error } = await supabaseAdmin.from('qr_tokens').select('*, session:session_id(*)').eq('token', parsed.data.qrToken).maybeSingle();
+  if (error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
+  if (!token || Date.now() > new Date(token.expires_at).getTime() + 5000) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
+  const session = token.session as any;
+  if (session?.status !== 'ACTIVE') return res.status(400).json({ error: 'This attendance session is no longer accepting scans.' });
+  const { data: enrollment } = await supabaseAdmin.from('class_enrollments').select('id').eq('student_id', user.profileId).eq('class_id', session.class_id).eq('status', 'active').maybeSingle();
+  if (!enrollment) return res.status(403).json({ error: 'You are not enrolled in this class.' });
+  const { data: existing } = await supabaseAdmin.from('attendance_records').select('id').eq('session_id', session.id).eq('student_id', user.profileId).maybeSingle();
+  if (existing) return res.status(409).json({ error: 'You have already submitted attendance for this session.' });
+  const scan = createScanTicket(user.authUserId, token.id, session.id);
+  return res.json({ scanTicket: scan.ticket, expiresAt: scan.expiresAt, sessionId: session.id });
 });
 
 /**
@@ -40,7 +61,7 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
     return res.status(400).json({ error: 'Invalid submission data' });
   }
 
-  const { qrToken, verificationPhotoUrl, verificationPhotoSignature } = parsed.data;
+  const { qrToken, verificationPhotoUrl, verificationPhotoSignature, scanTicket } = parsed.data;
   if (!isOwnedAttendancePhoto(verificationPhotoUrl, user.authUserId, verificationPhotoSignature)) {
     return res.status(400).json({ error: 'Upload a fresh selfie to your account before submitting attendance.' });
   }
@@ -57,9 +78,8 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
   }
 
   // 2. Check token expiry (with 5-second grace for clock skew)
-  const tokenExpiry = new Date(tokenRecord.expires_at).getTime();
-  if (Date.now() > tokenExpiry + 5000) {
-    return res.status(400).json({ error: 'QR token has expired. Please scan the newly refreshed QR.' });
+  if (!verifyScanTicket(scanTicket, user.authUserId, tokenRecord.id, tokenRecord.session_id)) {
+    return res.status(400).json({ error: 'Your selfie check-in expired. Close the camera and scan the latest QR again.' });
   }
 
   // 3. Check session status
@@ -181,6 +201,7 @@ router.put('/:id/verify', requireAuth, requireRole('faculty', 'admin'), async (r
       rejection_reason: status === 'REJECTED' ? (rejectionReason || 'Visual photo mismatch') : null,
     })
     .eq('id', id)
+    .eq('status', 'PENDING')
     .select()
     .single();
 
@@ -234,11 +255,15 @@ router.get('/my-records', requireAuth, requireRole('student'), async (req, res) 
   return res.json(
     (data || []).map((r: any) => ({
       id: r.id,
+      classId: r.class_id,
+      sessionId: r.session_id,
       status: r.status,
       submittedAt: r.submitted_at,
       className: r.session?.class?.class_name || '',
       courseCode: r.session?.class?.course_code || '',
       date: r.session?.date || '',
+      verifiedAt: r.verified_at,
+      rejectionReason: r.rejection_reason,
     }))
   );
 });

@@ -43,7 +43,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   }
 
   // 3. Load enrolled students
-  const { data: enrollments } = await supabaseAdmin
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('class_enrollments')
     .select(`
       student:student_id (
@@ -52,25 +52,27 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
     `)
     .eq('class_id', session.class_id)
     .eq('status', 'active');
+  if (enrollmentError) return res.status(500).json({error:'Could not load the class roster. Please retry.'});
 
   const students = (enrollments || [])
     .filter((e: any) => e.student)
     .map((e: any) => e.student);
 
   // 4. Load attendance records for this session
-  const { data: records } = await supabaseAdmin
+  const { data: records, error: recordError } = await supabaseAdmin
     .from('attendance_records')
     .select('*, verifier:verified_by(full_name)')
     .eq('session_id', sessionId);
+  if (recordError) return res.status(500).json({error:'Could not load attendance decisions. Please retry.'});
 
   const recordMap = new Map((records || []).map((r: any) => [r.student_id, r]));
 
   // 5. Build roster
   const roster = students.map((stud: any, idx: number) => {
     const rec = recordMap.get(stud.id) as any;
-    let finalStatus: 'PRESENT' | 'ABSENT' | 'REJECTED' = 'ABSENT';
+    let finalStatus: 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED' = 'ABSENT';
     if (rec) {
-      finalStatus = rec.status === 'PRESENT' ? 'PRESENT' : rec.status === 'REJECTED' ? 'REJECTED' : 'ABSENT';
+      finalStatus = rec.status;
     }
     return { serialNo: idx + 1, student: stud, status: finalStatus, record: rec || null };
   });
@@ -145,20 +147,24 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   // Data rows
   let presentCount = 0;
   let absentCount = 0;
+  let pendingCount = 0;
+  let rejectedCount = 0;
 
   roster.forEach((item, index) => {
     if (item.status === 'PRESENT') presentCount++;
+    else if (item.status === 'PENDING') pendingCount++;
+    else if (item.status === 'REJECTED') rejectedCount++;
     else absentCount++;
 
-    const formattedTime = item.record?.submitted_at
-      ? new Date(item.record.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const formattedTime = item.record?.verified_at
+      ? new Date(item.record.verified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       : '—';
 
     const remarks = item.status === 'PRESENT'
       ? (item.record?.verifier?.full_name ? `Confirmed by ${item.record.verifier.full_name}` : 'Confirmed')
       : item.status === 'REJECTED'
         ? `Rejected: ${item.record?.rejection_reason || 'Photo mismatch'}`
-        : 'Absent / No submission';
+        : item.status === 'PENDING' ? 'Awaiting faculty review' : 'Absent / No submission';
 
     const row = worksheet.addRow([
       index + 1,
@@ -207,7 +213,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
     'TOTAL:', `${totalEnrolled} Students`,
     'PRESENT:', `${presentCount} (${attendancePercent}%)`,
     'ABSENT:', `${absentCount} Students`,
-    'OFFICIALLY VERIFIED',
+    `PENDING: ${pendingCount} · REJECTED: ${rejectedCount}`,
   ]);
   summaryRow.height = 26;
   summaryRow.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -216,7 +222,8 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
 
   // 7. Send the file
   const safeClassName = cls.class_name.replace(/[^a-zA-Z0-9]/g, '_');
-  const filename = `${cls.course_code}_${safeClassName}_${session.date}_Attendance.xlsx`;
+  const safeCourseCode = cls.course_code.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `${safeCourseCode}_${safeClassName}_${session.date}_Attendance.xlsx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

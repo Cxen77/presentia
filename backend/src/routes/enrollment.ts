@@ -56,10 +56,16 @@ router.get('/my-classes', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch enrolled classes' });
   }
 
+  const classIds = (data || []).flatMap((item: any) => item.class ? [item.class.id] : []);
+  const { data: sessions, error: sessionError } = classIds.length ? await supabaseAdmin.from('attendance_sessions').select('id,class_id,status,created_at').in('class_id', classIds).eq('date', new Date().toISOString().slice(0,10)).order('created_at', { ascending:false }) : {data:[],error:null};
+  const { data: records, error: recordError } = classIds.length ? await supabaseAdmin.from('attendance_records').select('session_id,status').eq('student_id',user.profileId).in('class_id',classIds) : {data:[],error:null};
+  if (sessionError || recordError) return res.status(500).json({error:'Could not refresh class attendance status. Please retry.'});
   const classes = (data || [])
     .filter((item: any) => item.class)
     .map((item: any) => {
       const cls = item.class;
+      const latest = sessions?.find((session: any) => session.class_id === cls.id);
+      const attendance = records?.find((record: any) => record.session_id === latest?.id);
       return {
         id: cls.id,
         enrollmentId: item.id,
@@ -72,6 +78,9 @@ router.get('/my-classes', requireAuth, async (req, res) => {
         department: cls.department,
         enrollmentCode: cls.enrollment_code,
         credits: cls.credits || 4,
+        sessionId: latest?.id,
+        sessionStatus: latest?.status,
+        attendanceStatus: attendance?.status,
       };
     });
 

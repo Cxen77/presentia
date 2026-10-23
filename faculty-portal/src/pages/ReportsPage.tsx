@@ -1,24 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { EmptyState, PageHeading } from '../components/ui/PortalUI';
+import { EmptyState, InlineError, PageHeading } from '../components/ui/PortalUI';
 import { 
   FileSpreadsheet, 
   Download, 
   Calendar, 
   Clock, 
-  Users, 
-  CheckCircle2, 
-  XCircle, 
   AlertTriangle,
   ChevronDown,
   ChevronUp,
   MapPin,
-  Filter,
-  Eye
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
-import { exportSessionAttendanceToExcel } from '../services/excelExportService';
+import { downloadSessionReport } from '../services/api';
 import { AttendanceSession, AttendanceRecord, ClassItem, StudentProfile } from '../types';
 
 interface FullRosterData {
@@ -47,10 +42,14 @@ export const ReportsPage: React.FC = () => {
   const [rosterData, setRosterData] = useState<FullRosterData | null>(null);
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [error,setError]=useState<string|null>(null);
 
   const loadSessions = async () => {
+    try {
     const allSessions = await attendanceDataService.getAllSessions();
     setSessions(allSessions);
+    setError(null);
+    }catch(error){setError(error instanceof Error?error.message:'Could not load reports.');}
   };
 
   useEffect(() => {
@@ -70,39 +69,31 @@ export const ReportsPage: React.FC = () => {
 
     setExpandedSessionId(sessionId);
     setLoadingRoster(true);
-    const data = await attendanceDataService.getSessionFullRoster(sessionId);
-    setRosterData(data);
-    setLoadingRoster(false);
+    try {setRosterData(await attendanceDataService.getSessionFullRoster(sessionId));}
+    catch(error){setError(error instanceof Error?error.message:'Could not load roster.');}
+    finally{setLoadingRoster(false);}
   };
 
   const handleFinalize = async (sessionId: string) => {
-    if (!window.confirm('Finalize this session? All remaining PENDING submissions will be marked as ABSENT. This action cannot be undone.')) {
+    if (!window.confirm('Finalize this session? Remaining PENDING submissions will be rejected as unverified. Review students first. This action cannot be undone.')) {
       return;
     }
+    try {
     await attendanceDataService.finalizeSession(sessionId);
     loadSessions();
     if (expandedSessionId === sessionId) {
       const data = await attendanceDataService.getSessionFullRoster(sessionId);
       setRosterData(data);
     }
+    }catch(error){setError(error instanceof Error?error.message:'Could not finalize.');}
   };
 
   const handleExportExcel = async (sessionId: string) => {
     setExporting(sessionId);
     try {
-      const data = await attendanceDataService.getSessionFullRoster(sessionId);
-      if (!data) {
-        alert('Could not load session data for export.');
-        return;
-      }
-      await exportSessionAttendanceToExcel({
-        session: data.session,
-        classItem: data.classItem,
-        roster: data.roster,
-      });
+      await downloadSessionReport(sessionId);
     } catch (err) {
-      console.error('Export error:', err);
-      alert('Failed to generate Excel file.');
+      setError(err instanceof Error?err.message:'Failed to download Excel file.');
     } finally {
       setExporting(null);
     }
@@ -172,6 +163,7 @@ export const ReportsPage: React.FC = () => {
   return (
     <div className="legacy-page page-stack">
       <PageHeading eyebrow="ATTENDANCE" title="Reports" description="Open a session to review its roster, then export when you’re ready." />
+      <InlineError message={error}/>
       {/* Session List */}
       {sessions.length === 0 ? (
         <section className="panel"><EmptyState icon={FileSpreadsheet} title="Your reports will live here" description="After your first attendance session, open its report to review students and download an Excel sheet." action={<Link to="/live-attendance" className="p-button secondary small">Take attendance</Link>} /></section>

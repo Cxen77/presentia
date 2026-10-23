@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
@@ -7,15 +7,10 @@ import {
   Users, 
   CheckCircle2, 
   XCircle, 
-  AlertTriangle, 
   RefreshCw, 
-  Radio, 
-  Sparkles, 
   StopCircle, 
-  ArrowRight,
   ShieldAlert,
   FileSpreadsheet,
-  Camera,
   Play
 } from 'lucide-react';
 import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
@@ -23,6 +18,13 @@ import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { AttendanceSession, ClassItem, AttendanceRecord } from '../types';
+import { downloadSessionReport } from '../services/api';
+
+function ReviewPhoto({src,alt}:{src:string;alt:string}) {
+  const [failed,setFailed]=useState(false);
+  if(!src||failed)return <div className="h-full flex flex-col items-center justify-center gap-2 p-3 text-slate-400"><Users size={28}/><span className="text-xs">{!src?'Photo not provided':'Photo unavailable'}</span></div>;
+  return <img src={src} alt={alt} onError={()=>setFailed(true)} className="w-full h-full object-cover"/>;
+}
 
 export const LiveAttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -36,18 +38,20 @@ export const LiveAttendancePage: React.FC = () => {
   const [rejectModalRecord, setRejectModalRecord] = useState<AttendanceRecord | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('Visual photo mismatch with student profile');
   const [confirmEndModal, setConfirmEndModal] = useState<boolean>(false);
-  const [simulating, setSimulating] = useState(false);
+  const [exporting,setExporting]=useState(false);
+  const [deciding,setDeciding]=useState<string|null>(null);
+  const rotating=useRef(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const activeSessionId=activeSession?.id;
 
   // Load classes and active session
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     if (!user) return;
+    try {
     const classList = await attendanceDataService.getClasses(user.id);
     setClasses(classList);
-    if (classList.length > 0 && !selectedClassId) {
-      setSelectedClassId(classList[0].id);
-    }
+    setSelectedClassId(previous=>previous || classList[0]?.id || '');
 
     const session = await attendanceDataService.getActiveSession(user.id);
     setActiveSession(session);
@@ -55,8 +59,10 @@ export const LiveAttendancePage: React.FC = () => {
     if (session) {
       const sessionRecs = await attendanceDataService.getSessionRecords(session.id);
       setRecords(sessionRecs);
-    }
-  };
+    } else setRecords([]);
+    setStartError(null);
+    } catch(error) { setStartError(error instanceof Error ? error.message : 'Could not load attendance.'); }
+  },[user]);
 
   useEffect(() => {
     refreshData();
@@ -64,25 +70,25 @@ export const LiveAttendancePage: React.FC = () => {
       refreshData();
     });
     return () => unsubscribe();
-  }, [user]);
+  }, [refreshData]);
 
   // Real-time Supabase attendance_records live updates
   useEffect(() => {
-    if (!activeSession || !isSupabaseConfigured()) return;
+    if (!activeSessionId || !isSupabaseConfigured()) return;
 
     const channel = supabase
-      .channel(`live_attendance_${activeSession.id}`)
+      .channel(`live_attendance_${activeSessionId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'attendance_records',
-          filter: `session_id=eq.${activeSession.id}`,
+          filter: `session_id=eq.${activeSessionId}`,
         },
         async () => {
-          const sessionRecs = await attendanceDataService.getSessionRecords(activeSession.id);
-          setRecords(sessionRecs);
+          try { setRecords(await attendanceDataService.getSessionRecords(activeSessionId)); }
+          catch(error) {setStartError(error instanceof Error?error.message:'Could not refresh submissions.');}
         }
       )
       .subscribe();
@@ -90,23 +96,34 @@ export const LiveAttendancePage: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeSession?.id]);
+  }, [activeSessionId]);
+
+  useEffect(()=>{
+    if(!activeSession?.id)return;
+    const id=activeSession.id;
+    const timer=setInterval(()=>{void attendanceDataService.getSessionRecords(id).then(setRecords).catch(error=>setStartError(error.message));},5000);
+    return()=>clearInterval(timer);
+  },[activeSession?.id]);
 
   // Periodic QR Code Rotation & Countdown Timer (every 25 seconds)
   useEffect(() => {
-    if (!activeSession || activeSession.status === 'CLOSED') return;
+    if (!activeSession || activeSession.status !== 'ACTIVE') return;
 
     const timer = setInterval(async () => {
       const now = Date.now();
       const diff = Math.max(0, Math.ceil((activeSession.tokenExpiresAt - now) / 1000));
 
-      if (diff <= 0) {
+      if (diff <= 0 && !rotating.current) {
+        rotating.current=true;
+        try {
         // Rotate token!
         const updated = await attendanceDataService.rotateQRToken(activeSession.id);
         if (updated) {
-          setActiveSession(updated);
+          setActiveSession(previous=>previous?.id===activeSession.id?{...previous,...updated}:previous);
           setSecondsRemaining(25);
         }
+        } catch(error) {setStartError(error instanceof Error?error.message:'QR refresh failed. Please retry.');}
+        finally {rotating.current=false;}
       } else {
         setSecondsRemaining(diff);
       }
@@ -129,12 +146,17 @@ export const LiveAttendancePage: React.FC = () => {
   };
 
   const handleConfirmStudent = async (recordId: string) => {
-    if (!user) return;
-    await attendanceDataService.verifySubmission(recordId, 'PRESENT', user.id, user.name);
+    if (!user || deciding) return;
+    setDeciding(recordId);setStartError(null);
+    try {await attendanceDataService.verifySubmission(recordId, 'PRESENT', user.id, user.name);if(activeSession)setRecords(await attendanceDataService.getSessionRecords(activeSession.id));}
+    catch(error){setStartError(error instanceof Error?error.message:'Could not confirm attendance.');}
+    finally{setDeciding(null);}
   };
 
   const handleRejectStudent = async () => {
-    if (!user || !rejectModalRecord) return;
+    if (!user || !rejectModalRecord || deciding) return;
+    setDeciding(rejectModalRecord.id);setStartError(null);
+    try {
     await attendanceDataService.verifySubmission(
       rejectModalRecord.id,
       'REJECTED',
@@ -143,21 +165,18 @@ export const LiveAttendancePage: React.FC = () => {
       rejectReason
     );
     setRejectModalRecord(null);
+    if(activeSession)setRecords(await attendanceDataService.getSessionRecords(activeSession.id));
+    }catch(error){setStartError(error instanceof Error?error.message:'Could not reject attendance.');}
+    finally{setDeciding(null);}
   };
 
   const handleEndSession = async () => {
     if (!activeSession) return;
-    await attendanceDataService.endSession(activeSession.id);
-    setConfirmEndModal(false);
-    navigate('/reports');
+    try {await attendanceDataService.endSession(activeSession.id);setConfirmEndModal(false);navigate('/reports');}
+    catch(error){setStartError(error instanceof Error?error.message:'Could not end session.');setConfirmEndModal(false);}
   };
 
-  const handleSimulateScan = async () => {
-    if (!activeSession) return;
-    setSimulating(true);
-    await attendanceDataService.triggerSimulatedStudentScan(activeSession.id);
-    setSimulating(false);
-  };
+  const handleDownload=async()=>{if(!activeSession)return;setExporting(true);try{await downloadSessionReport(activeSession.id);}catch(error){setStartError(error instanceof Error?error.message:'Download failed.');}finally{setExporting(false);}};
 
   // Metrics
   const pendingRecords = records.filter(r => r.status === 'PENDING');
@@ -179,7 +198,7 @@ export const LiveAttendancePage: React.FC = () => {
   return (
     <div className="legacy-page page-stack">
       <PageHeading eyebrow="ATTENDANCE" title={activeSession ? activeSession.className : 'Live attendance'} description={activeSession ? `${activeSession.courseCode} · Review incoming submissions below.` : 'Choose a class, share its QR, and review student submissions.'}
-        action={activeSession && <button className="p-button danger" onClick={() => setConfirmEndModal(true)}><StopCircle size={14} />End session</button>} />
+        action={<div className="flex flex-wrap gap-2"><button className="p-button secondary" onClick={()=>void refreshData()}><RefreshCw size={14}/>Refresh</button>{activeSession&&<><button className="p-button secondary" disabled={exporting||!records.length} onClick={handleDownload}><FileSpreadsheet size={14}/>{exporting?'Downloading…':'Download sheet'}</button>{activeSession.status==='ACTIVE'&&<button className="p-button danger" onClick={() => setConfirmEndModal(true)}><StopCircle size={14} />End session</button>}</>}</div>} />
       <InlineError message={startError} />
       {/* No Active Session State: Class Selector */}
       {!activeSession ? (
@@ -228,7 +247,6 @@ export const LiveAttendancePage: React.FC = () => {
       ) : (
         /* Active Live Attendance View */
         <div className="space-y-6">
-          <Disclosure title="Session tools" description="Optional scan simulation"><button className="p-button secondary small" disabled={simulating} onClick={handleSimulateScan}><Camera size={13} />{simulating ? 'Simulating…' : 'Simulate student scan'}</button></Disclosure>
           {/* Top Session Stats Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="bg-[#172333] border border-[#273548] rounded-xl p-4 text-center">
@@ -266,7 +284,7 @@ export const LiveAttendancePage: React.FC = () => {
                 <div className="flex items-center justify-between text-xs border-b border-[#273548]/70 pb-3">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="font-bold text-emerald-400">ACTIVE SESSION</span>
+                    <span className="font-bold text-emerald-400">{activeSession.status==='ACTIVE'?'ACTIVE SESSION':'REVIEW ONLY · SCANNING CLOSED'}</span>
                   </div>
                   <span className="text-[11px] text-[#9aabc1] font-mono">
                     Token #{activeSession.tokenRotationCount}
@@ -283,12 +301,12 @@ export const LiveAttendancePage: React.FC = () => {
 
                 {/* QR Display Card */}
                 <div className="bg-white p-4 rounded-xl inline-block mx-auto">
-                  <QRCodeSVG
+                  {activeSession.status==='ACTIVE'?<QRCodeSVG
                     value={qrPayload}
                     size={210}
                     level="H"
                     includeMargin={false}
-                  />
+                  />:<p className="text-sm text-slate-800 p-5">Session ended.<br/>Review remaining submissions.</p>}
                 </div>
 
                 {/* Countdown and Progress */}
@@ -378,11 +396,7 @@ export const LiveAttendancePage: React.FC = () => {
                               1. Registered Profile
                             </span>
                             <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#273548] bg-[#111b28]">
-                              <img
-                                src={record.studentAvatarUrl}
-                                alt="Registered university profile"
-                                className="w-full h-full object-cover"
-                              />
+                              <ReviewPhoto key={record.studentAvatarUrl} src={record.studentAvatarUrl} alt={`Registered profile photo of ${record.studentName}`}/>
                               <div className="absolute bottom-1 left-1 right-1 bg-[#0b111b]/80 backdrop-blur-sm py-0.5 text-[10px] text-[#9aabc1] rounded">
                                 Database Record
                               </div>
@@ -395,11 +409,7 @@ export const LiveAttendancePage: React.FC = () => {
                               2. Live Camera Snapshot
                             </span>
                             <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-[#111b28]">
-                              <img
-                                src={record.verificationPhotoUrl}
-                                alt="Live attendance verification snapshot"
-                                className="w-full h-full object-cover"
-                              />
+                              <ReviewPhoto key={record.verificationPhotoUrl} src={record.verificationPhotoUrl} alt={`Attendance selfie of ${record.studentName}`}/>
                               <div className="absolute bottom-1 left-1 right-1 bg-emerald-950/80 backdrop-blur-sm py-0.5 text-[10px] text-emerald-300 rounded font-medium">
                                 Captured in Classroom
                               </div>
@@ -410,6 +420,7 @@ export const LiveAttendancePage: React.FC = () => {
                         {/* Decision Buttons */}
                         <div className="grid grid-cols-2 gap-3 pt-2">
                           <button
+                            disabled={!!deciding}
                             onClick={() => {
                               setRejectModalRecord(record);
                               setRejectReason('Visual photo mismatch with registered student profile');
@@ -421,11 +432,12 @@ export const LiveAttendancePage: React.FC = () => {
                           </button>
 
                           <button
+                            disabled={!!deciding}
                             onClick={() => handleConfirmStudent(record.id)}
                             className="py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#0b111b] text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
                           >
                             <CheckCircle2 size={16} />
-                            <span>Confirm Present</span>
+                            <span>{deciding===record.id?'Saving…':'Confirm Present'}</span>
                           </button>
                         </div>
                       </div>
@@ -463,11 +475,11 @@ export const LiveAttendancePage: React.FC = () => {
                         {presentRecords.map((r) => (
                           <tr key={r.id} className="hover:bg-[#202c3e]/40 transition-colors">
                             <td className="py-2 px-4 flex items-center gap-2.5">
-                              <img
+                              {r.studentAvatarUrl&&<img
                                 src={r.studentAvatarUrl}
                                 alt={r.studentName}
                                 className="w-6 h-6 rounded-full object-cover border border-[#273548]"
-                              />
+                              />}
                               <span className="font-semibold">{r.studentName}</span>
                             </td>
                             <td className="py-2 px-4 font-mono text-[#b5bafa]">{r.studentRollNumber}</td>
@@ -551,6 +563,7 @@ export const LiveAttendancePage: React.FC = () => {
                 Cancel
               </button>
               <button
+                disabled={!!deciding}
                 onClick={handleRejectStudent}
                 className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow"
               >
