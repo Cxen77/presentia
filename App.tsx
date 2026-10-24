@@ -76,7 +76,8 @@ import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } f
 import { ProfileSettingsModal, type SettingsSection } from './src/components/ProfileSettingsModal';
 import { clearStudentCache } from './src/services/studentCache';
 import { getAttendanceLocation, warmGrantedLocation } from './src/services/checkInLocation';
-import { uploadCloudinaryImage, uploadImageToCloudinary } from './src/services/cloudinary';
+import { uploadCloudinaryImage, uploadImageToCloudinary, optimizedAvatarUrl } from './src/services/cloudinary';
+import { SkeletonBlock } from './src/components/Skeleton';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -609,7 +610,7 @@ export const StudentProfileCard: React.FC<{
       <View style={styles.profileRow}>
         <View style={styles.avatarContainer}>
           {hasCustomAvatar ? (
-            <Image source={{ uri: student.avatarUrl }} style={styles.avatarImage} />
+            <Image source={{ uri: optimizedAvatarUrl(student.avatarUrl) }} style={styles.avatarImage} />
           ) : student.avatarUrl === 'assets/aryan.jpg' ? (
             <Image source={require('./assets/aryan.jpg')} style={styles.avatarImage} />
           ) : (
@@ -1684,7 +1685,9 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
 
   useEffect(() => {
     loadData();
-    const timer=setInterval(()=>{if(AppState.currentState==='active')void loadData();},30000);
+    // Profile and class list rarely change; foreground (AppState) refresh keeps
+    // them fresh on phone unlock, so a slow tick is enough for a classroom.
+    const timer=setInterval(()=>{if(AppState.currentState==='active')void loadData();},120000);
     const listener=AppState.addEventListener('change',state=>{if(state==='active')void loadData();});
     return()=>{clearInterval(timer);listener.remove();};
   }, [loadData]);
@@ -1692,15 +1695,29 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
   if (!student) {
     return (
       <AppBackground variant="dashboard">
-        <View style={styles.centerContainer}>
-          {loading && <ActivityIndicator size="large" color="#9AB9EC" />}
-          <Text style={{ color: Colors.textSecondary, textAlign: 'center', margin: 20 }}>
-            {loading ? 'Loading your student profile...' : loadError}
-          </Text>
-          {!loading && (
-            <TouchableOpacity style={styles.emptyJoinAction} onPress={onLogout}>
-              <Text style={styles.emptyJoinText}>Return to Sign In</Text>
-            </TouchableOpacity>
+        <View style={styles.screenPadding}>
+          {loading ? (
+            // Profile-card and class-row placeholders while the session restores.
+            <View style={{ gap: 18, marginTop: 12 }} accessible={false} importantForAccessibility="no-hide-descendants">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <SkeletonBlock width={56} height={56} radius={28} />
+                <View style={{ flex: 1, gap: 8 }}>
+                  <SkeletonBlock width="55%" height={15} />
+                  <SkeletonBlock width="35%" height={11} />
+                </View>
+              </View>
+              <SkeletonBlock width="100%" height={150} radius={22} />
+              {[0, 1, 2].map(i => <SkeletonBlock key={i} width="100%" height={74} radius={18} />)}
+            </View>
+          ) : (
+            <View style={styles.centerContainer}>
+              <Text style={{ color: Colors.textSecondary, textAlign: 'center', margin: 20 }}>
+                {loadError}
+              </Text>
+              <TouchableOpacity style={styles.emptyJoinAction} onPress={onLogout}>
+                <Text style={styles.emptyJoinText}>Return to Sign In</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </AppBackground>
@@ -1804,7 +1821,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
       <QRScannerModal
         visible={qrModalVisible}
         studentProfileId={activeStudent.id}
-        profileAvatarUri={activeStudent.avatarUrl}
+        profileAvatarUri={optimizedAvatarUrl(activeStudent.avatarUrl)}
         onClose={() => setQrModalVisible(false)}
         onClassEnrolled={loadData}
       />
@@ -1984,7 +2001,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
         <View style={styles.profileBoxTop}>
           <View style={styles.avatarWrapper}>
             {profile.avatarUrl && profile.avatarUrl.startsWith('http') ? (
-              <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+              <Image source={{ uri: optimizedAvatarUrl(profile.avatarUrl) }} style={styles.avatarImage} />
             ) : profile.avatarUrl === 'assets/aryan.jpg' ? (
               <Image source={require('./assets/aryan.jpg')} style={styles.avatarImage} />
             ) : (

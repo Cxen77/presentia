@@ -19,6 +19,7 @@ import {
   QrCode,
 } from "lucide-react-native";
 import { getClassCalendar, getMyEnrolledClasses } from "../services/api";
+import { optimizedAvatarUrl } from "../services/cloudinary";
 import { useStudentQuery } from "../hooks/useStudentQuery";
 import {
   classCardStatus,
@@ -55,7 +56,7 @@ export default function StudentClassDetailScreen() {
   const [profile, setProfile] = useState<StudentProfile | null>(null),
     [scanner, setScanner] = useState(false),
     [scanError, setScanError] = useState<string | null>(null);
-  const classes = useStudentQuery("classes", getMyEnrolledClasses, [], 30000);
+  const classes = useStudentQuery("classes", getMyEnrolledClasses, [], 120000);
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
   const loadCalendar = useCallback(
     () => getClassCalendar(id, monthKey),
@@ -389,7 +390,7 @@ export default function StudentClassDetailScreen() {
             <QRScannerModal
               visible={scanner}
               studentProfileId={profile.id}
-              profileAvatarUri={profile.avatarUrl}
+              profileAvatarUri={optimizedAvatarUrl(profile.avatarUrl)}
               onClose={() => setScanner(false)}
               onClassEnrolled={() => {
                 setScanner(false);

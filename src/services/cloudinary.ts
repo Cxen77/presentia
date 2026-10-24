@@ -1,8 +1,33 @@
 import { Platform } from 'react-native';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { getCloudinarySignature } from './api';
 
 export type CloudinaryFolder = 'student_profiles' | 'attendance_verification';
 export interface CloudinaryUploadReceipt { url: string; signature: string }
+
+/** Phone cameras capture multi-megabyte photos; a classroom of check-ins would
+ *  saturate the Wi-Fi. Reviews compare at thumbnail size, so cap the long edge. */
+async function downscaleForUpload(imageUri: string): Promise<string> {
+  try {
+    const result = await manipulateAsync(
+      imageUri,
+      [{ resize: { width: 1000 } }],
+      { compress: 0.8, format: SaveFormat.JPEG },
+    );
+    return result.uri;
+  } catch {
+    return imageUri; // Upload the original rather than blocking the check-in.
+  }
+}
+
+/** Display-size variant of a public Cloudinary URL (profile photos render at
+ *  thumbnail size; loading the original wastes the student's data). */
+export function optimizedAvatarUrl(url: string | null | undefined, width = 256): string {
+  if (!url) return '';
+  return url.includes('/image/upload/') && !url.includes(',q_') && !/\/w_\d/.test(url)
+    ? url.replace('/image/upload/', `/image/upload/w_${width},q_auto:good/`)
+    : url;
+}
 
 /** Upload directly with a backend signature. The API secret never enters this client. */
 export async function uploadCloudinaryImage(imageUri: string, folder: CloudinaryFolder = 'student_profiles', onProgress?: (progress: number) => void): Promise<CloudinaryUploadReceipt> {
@@ -12,6 +37,7 @@ export async function uploadCloudinaryImage(imageUri: string, folder: Cloudinary
   if (!signed.cloudName || !signed.apiKey || !signed.signature || !signed.publicId || signed.folder !== folder || !['upload','authenticated'].includes(signed.type)) {
     throw new Error('The backend did not return valid photo upload settings.');
   }
+  imageUri = await downscaleForUpload(imageUri);
   const form = new FormData();
   if (Platform.OS === 'web') {
     const local = await fetch(imageUri);

@@ -20,6 +20,7 @@ import { getMyAttendanceRecords, getMyEnrolledClasses } from '../services/api';
 import { useStudentQuery } from '../hooks/useStudentQuery';
 import { router } from 'expo-router';
 import { StudentClassCard } from './StudentClassCard';
+import { AttendanceSkeleton, ClassCardSkeleton } from './Skeleton';
 import { classCardStatus } from '../services/attendanceCalendar';
 import { getAttendanceAlerts } from '../services/studentCache';
 const statusText = (status?: string) =>
@@ -89,7 +90,7 @@ function QueryMessage({
   ) : null;
 }
 export function StudentClassesView() {
-  const query = useStudentQuery('classes', getMyEnrolledClasses, [], 30000);
+  const query = useStudentQuery('classes', getMyEnrolledClasses, [], 120000);
   return (
     <ScrollView
       contentContainerStyle={s.screen}
@@ -120,7 +121,9 @@ export function StudentClassesView() {
         </View>
       )}
       <View style={{ gap: 12, marginTop: 18 }}>
-        {query.data.map((item) => (
+        {query.loading && !query.updatedAt
+          ? [0, 1, 2].map(i => <ClassCardSkeleton key={i} />)
+          : query.data.map((item) => (
           <StudentClassCard
             key={item.id}
             item={{ ...item, status: classCardStatus(item) }}
@@ -132,7 +135,7 @@ export function StudentClassesView() {
   );
 }
 export function StudentAttendanceView() {
-  const query = useStudentQuery('attendance', getMyAttendanceRecords, []);
+  const query = useStudentQuery('attendance', getMyAttendanceRecords, [], 45000);
   const present = query.data.filter((item) => item.status === 'PRESENT').length;
   const pending = query.data.filter((item) => item.status === 'PENDING').length;
   return (
@@ -155,6 +158,7 @@ export function StudentAttendanceView() {
         <RefreshButton onPress={query.refresh} busy={query.refreshing} />
       </View>
       <QueryMessage {...query} />
+      {query.loading && !query.updatedAt ? <AttendanceSkeleton /> : <>
       <View style={s.stats}>
         <View style={s.stat}>
           <Text style={s.statNumber}>{present}</Text>
@@ -208,11 +212,12 @@ export function StudentAttendanceView() {
           </View>
         ))}
       </View>
+      </>}
     </ScrollView>
   );
 }
 export function AttendanceDecisionNotice() {
-  const query = useStudentQuery('attendance', getMyAttendanceRecords, []);
+  const query = useStudentQuery('attendance', getMyAttendanceRecords, [], 45000);
   const previous = useRef<Map<string, string> | null>(null);
   const [notice, setNotice] = useState<{
     course: string;
