@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { GraduationCap, Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react';
@@ -8,7 +8,7 @@ import { AuroraBackdrop } from '../components/ui/Motion';
 import { easeOut } from '../components/ui/motionEase';
 
 export const LoginPage: React.FC = () => {
-  const { login, loginWithGoogle,refreshUser } = useAuth();
+  const { login, loginWithGoogle,refreshUser, bootError } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -17,6 +17,10 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [verifyMode,setVerifyMode]=useState(false),[verificationEmail,setVerificationEmail]=useState(''),[code,setCode]=useState(''),[message,setMessage]=useState<string|null>(null);
+  // Surface a failed session check (e.g. network blip) once, then let the user sign in normally.
+  const shownBootError = useRef(false);
+  const visibleError = error || (!shownBootError.current ? bootError : null);
+  if (bootError && !shownBootError.current) shownBootError.current = true;
   const verify=async(e:React.FormEvent)=>{e.preventDefault();setLoading(true);setError(null);try{const {error}=await supabase.auth.verifyOtp({email:verificationEmail.trim(),token:code.trim(),type:'signup'});if(error)throw error;await refreshUser();navigate('/');}catch(e){setError(e instanceof Error?e.message:'Could not verify email.');}finally{setLoading(false);}};
   const resend=async()=>{if(!verificationEmail.includes('@')){setError('Enter the email address for this account.');return;}setLoading(true);setError(null);try{const {error}=await supabase.auth.resend({type:'signup',email:verificationEmail.trim()});if(error)throw error;setMessage('A fresh confirmation code has been sent. Check your inbox and spam.');}catch(e){setError(e instanceof Error?e.message:'Could not send confirmation.');}finally{setLoading(false);}};
 
@@ -58,7 +62,7 @@ export const LoginPage: React.FC = () => {
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
           >
-            <GraduationCap size={25} strokeWidth={1.8} />
+            <GraduationCap size={25} strokeWidth={1.8} aria-hidden="true" />
           </motion.div>
           <h1 className="text-xl font-semibold text-[#eef2f8] tracking-tight">Staff workspace</h1>
           <p className="text-sm text-[#9aabc1] mt-1.5">Your classes and attendance, in one place.</p>
@@ -66,10 +70,10 @@ export const LoginPage: React.FC = () => {
 
         {/* Card */}
         <motion.div className="bg-[#111b28] border border-[#273548] rounded-xl p-5 shadow-sm login-card-surface" variants={{ hidden: { opacity: 0, y: 22 }, show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: easeOut, delay: 0.12 } } }}>
-          {error && (
-            <div className="mb-5 p-3.5 rounded-lg bg-red-950/40 border border-red-500/40 flex items-start gap-3">
-              <ShieldAlert size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-200">{error}</p>
+          {visibleError && (
+            <div role="alert" className="mb-5 p-3.5 rounded-lg bg-red-950/40 border border-red-500/40 flex items-start gap-3">
+              <ShieldAlert size={18} aria-hidden="true" className="text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-200">{visibleError}</p>
             </div>
           )}
 
@@ -81,7 +85,7 @@ export const LoginPage: React.FC = () => {
             disabled={googleLoading || loading}
             className="w-full py-2.5 px-4 rounded-lg bg-[#172333] hover:bg-[#1a3754] border border-[#273548] text-sm font-medium text-[#eef2f8] transition-all flex items-center justify-center gap-3 shadow-sm hover:border-[#b5bafa]/50 disabled:opacity-50"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <svg aria-hidden="true" focusable="false" className="w-4 h-4" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"
@@ -113,37 +117,39 @@ export const LoginPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
+              <label htmlFor="login-identifier" className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
                 Faculty ID or email
               </label>
               <div className="relative">
-                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
+                <Mail size={18} aria-hidden="true" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
+                  id="login-identifier"
                   type="text"
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="FAC-XXXXXXXX or staff email"
-                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus:border-[#b5bafa] transition-colors"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus-visible:outline-2 focus-visible:outline-[#9AB9EC] focus-visible:-outline-offset-2 focus:border-[#b5bafa] transition-colors"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
+              <label htmlFor="login-password" className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
                 Password
               </label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
+                <Lock size={18} aria-hidden="true" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
+                  id="login-password"
                   type="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
-                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus:border-[#b5bafa] transition-colors"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-sm text-[#eef2f8] placeholder-[#74869d] focus:outline-none focus-visible:outline-2 focus-visible:outline-[#9AB9EC] focus-visible:-outline-offset-2 focus:border-[#b5bafa] transition-colors"
                 />
               </div>
             </div>

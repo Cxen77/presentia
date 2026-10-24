@@ -66,12 +66,16 @@ function QueryMessage({
   error,
   loading,
   updatedAt,
+  spinner = true,
 }: {
   error: string | null;
   loading: boolean;
   updatedAt: number | null;
+  spinner?: boolean;
 }) {
-  return loading ? (
+  // Views that render skeleton placeholders pass spinner={false} so the
+  // initial load shows one indicator, not two.
+  return loading && spinner ? (
     <ActivityIndicator color="#a4bceb" style={{ marginTop: 24 }} />
   ) : error ? (
     <Text accessibilityRole="alert" style={s.error}>
@@ -110,7 +114,7 @@ export function StudentClassesView() {
         </View>
         <RefreshButton onPress={query.refresh} busy={query.refreshing} />
       </View>
-      <QueryMessage {...query} />
+      <QueryMessage {...query} spinner={false} />
       {!query.loading && !query.data.length && !query.error && (
         <View style={s.empty}>
           <BookOpen size={25} color="#839ebc" />
@@ -157,7 +161,7 @@ export function StudentAttendanceView() {
         </View>
         <RefreshButton onPress={query.refresh} busy={query.refreshing} />
       </View>
-      <QueryMessage {...query} />
+      <QueryMessage {...query} spinner={false} />
       {query.loading && !query.updatedAt ? <AttendanceSkeleton /> : <>
       <View style={s.stats}>
         <View style={s.stat}>

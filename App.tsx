@@ -565,8 +565,10 @@ export const AuthInput: React.FC<{
     <View style={styles.authInputContainer}>
       <Text style={styles.authInputLabel}>{label}</Text>
       <View style={styles.authInputFieldWrap}>
-        {icon && <View style={styles.authInputIcon}>{icon}</View>}
+        {icon && <View style={styles.authInputIcon} pointerEvents="none">{icon}</View>}
         <TextInput
+          accessibilityLabel={label}
+          accessibilityHint={isPassword ? 'Hidden by default' : undefined}
           style={styles.authTextInput}
           placeholder={placeholder}
           placeholderTextColor="#4C688A"
@@ -577,7 +579,12 @@ export const AuthInput: React.FC<{
           autoCapitalize={autoCapitalize}
         />
         {isPassword && (
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.authPasswordToggle}>
+          <TouchableOpacity
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.authPasswordToggle}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+          >
             <Text style={styles.authPasswordToggleText}>{showPassword ? 'Hide' : 'Show'}</Text>
           </TouchableOpacity>
         )}
@@ -618,7 +625,7 @@ export const StudentProfileCard: React.FC<{
               <User size={38} color="#5A7B9E" strokeWidth={1.8} />
             </View>
           )}
-          <TouchableOpacity style={styles.editBadge} onPress={onEditAvatar}>
+          <TouchableOpacity style={styles.editBadge} onPress={onEditAvatar} accessibilityRole="button" accessibilityLabel="Edit profile photo">
             <Pencil size={11} color="#FFFFFF" strokeWidth={2.4} />
           </TouchableOpacity>
         </View>
@@ -634,10 +641,10 @@ export const StudentProfileCard: React.FC<{
         </View>
 
         <View style={styles.profileActionsCol}>
-          <TouchableOpacity style={styles.qrScannerButton} onPress={onPressScanQR}>
+          <TouchableOpacity style={styles.qrScannerButton} onPress={onPressScanQR} accessibilityRole="button" accessibilityLabel="Scan attendance QR">
             <QrCode size={19} color="#061522" strokeWidth={2.2} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.chevronButton} onPress={onPressProfile}>
+          <TouchableOpacity style={styles.chevronButton} onPress={onPressProfile} accessibilityRole="button" accessibilityLabel="Open my profile">
             <ChevronRight size={18} color="#5C6F84" strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
@@ -1737,10 +1744,10 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
             <Text style={styles.dashSubtitle}>Let's make today count</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.headerSquareBtn} onPress={() => setQrModalVisible(true)}>
+            <TouchableOpacity style={styles.headerSquareBtn} accessibilityRole="button" accessibilityLabel="Scan QR code" onPress={() => setQrModalVisible(true)}>
               <QrCode size={18} color="#9AB9EC" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerSquareBtn} onPress={() => Alert.alert('Notifications', 'No new announcements.')}>
+            <TouchableOpacity style={styles.headerSquareBtn} accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => Alert.alert('Notifications', 'No new announcements.')}>
               <Bell size={18} color="#FFFFFF" />
             </TouchableOpacity>
           </View>

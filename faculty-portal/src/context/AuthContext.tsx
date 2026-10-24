@@ -7,6 +7,7 @@ interface AuthContextType {
   user: FacultyUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  bootError: string | null;
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -37,6 +38,9 @@ function buildFacultyUser(profile: any): FacultyUser {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<FacultyUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // A failed session check (network blip) must tell the user why they are back
+  // at the sign-in screen instead of silently dropping them there.
+  const [bootError, setBootError] = useState<string | null>(null);
 
   /**
    * Attempt to load user from the current Supabase session.
@@ -73,11 +77,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const facultyObj = buildFacultyUser(profile);
       setUser(facultyObj);
+      setBootError(null);
       localStorage.setItem(STORAGE_KEY_FACULTY_AUTH, JSON.stringify(facultyObj));
     } catch (err) {
       console.warn('Session load error:', err);
       setUser(null);
       localStorage.removeItem(STORAGE_KEY_FACULTY_AUTH);
+      setBootError('Could not verify your session. Check your connection and sign in again.');
     }
     setIsLoading(false);
   }, []);
@@ -177,7 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, isLoading, login, loginWithGoogle, logout, refreshUser:loadUserFromSession }}
+      value={{ user, isAuthenticated: !!user, isLoading, bootError, login, loginWithGoogle, logout, refreshUser:loadUserFromSession }}
     >
       {children}
     </AuthContext.Provider>
