@@ -35,14 +35,21 @@ function cachedFaculty(): { id: string; name: string } | null {
   return null;
 }
 
+// A failed direct read (missing grant, policy change) must not repeat on every
+// poll: back off for five minutes and use the backend path, which always works.
+const COOLDOWN_MS = 5 * 60_000;
+const cooldowns = { classes: 0, activeSession: 0 };
+function cooledDown(key: keyof typeof cooldowns) { return Date.now() >= cooldowns[key]; }
+function tripCooldown(key: keyof typeof cooldowns) { cooldowns[key] = Date.now() + COOLDOWN_MS; }
+
 export async function getClassesDirect(): Promise<DirectResult<ClassItem[]>> {
   const faculty = cachedFaculty();
-  if (!faculty) return { ok: false };
+  if (!faculty || !cooledDown('classes')) return { ok: false };
   const [classesRes, enrollmentsRes] = await Promise.all([
     supabase.from('classes').select('*').eq('faculty_id', faculty.id).order('created_at', { ascending: false }),
     supabase.from('class_enrollments').select('class_id').eq('status', 'active'),
   ]) as [{ data: ClassRow[] | null; error: { message: string } | null }, { data: { class_id: string }[] | null; error: { message: string } | null }];
-  if (classesRes.error || enrollmentsRes.error || !classesRes.data) return { ok: false };
+  if (classesRes.error || enrollmentsRes.error || !classesRes.data) { tripCooldown('classes'); return { ok: false }; }
   const counts = new Map<string, number>();
   for (const row of enrollmentsRes.data || []) counts.set(row.class_id, (counts.get(row.class_id) || 0) + 1);
   return {
@@ -73,7 +80,7 @@ export async function getClassesDirect(): Promise<DirectResult<ClassItem[]>> {
 
 export async function getActiveSessionDirect(): Promise<DirectResult<AttendanceSession | null>> {
   const faculty = cachedFaculty();
-  if (!faculty) return { ok: false };
+  if (!faculty || !cooledDown('activeSession')) return { ok: false };
   const sessionRes = (await supabase
     .from('attendance_sessions')
     .select('*, class:class_id(course_code, class_name, room)')
@@ -82,7 +89,7 @@ export async function getActiveSessionDirect(): Promise<DirectResult<AttendanceS
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()) as { data: SessionRow | null; error: { message: string } | null };
-  if (sessionRes.error) return { ok: false };
+  if (sessionRes.error) { tripCooldown('activeSession'); return { ok: false }; }
   const session = sessionRes.data;
   if (!session) return { ok: true, value: null };
   const tokenRes = (await supabase
@@ -92,7 +99,7 @@ export async function getActiveSessionDirect(): Promise<DirectResult<AttendanceS
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()) as { data: TokenRow | null; error: { message: string } | null };
-  if (tokenRes.error) return { ok: false };
+  if (tokenRes.error) { tripCooldown('activeSession'); return { ok: false }; }
   const cls = session.class || {};
   return {
     ok: true,
