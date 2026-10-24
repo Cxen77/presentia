@@ -148,6 +148,7 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
     .single();
 
   if (insertError) {
+    if (insertError.code === '23514' && insertError.message.includes('ATTENDANCE_SESSION_CLOSED')) return res.status(409).json({error:'Check-in has closed. Your submission was not accepted.'});
     // Handle unique constraint violation (race condition)
     if (insertError.code === '23505') {
       return res.status(409).json({ error: 'Attendance already submitted for this session.' });
@@ -192,7 +193,8 @@ router.put('/:id/verify', requireAuth, requireRole('faculty', 'admin'), async (r
       session:session_id (
         id,
         faculty_id,
-        class_id
+        class_id,
+        finalized_at
       )
     `)
     .eq('id', id)
@@ -206,6 +208,8 @@ router.put('/:id/verify', requireAuth, requireRole('faculty', 'admin'), async (r
   if (session.faculty_id !== user.profileId && user.role !== 'admin') {
     return res.status(403).json({ error: 'You are not authorized to verify this record' });
   }
+
+  if (session.finalized_at) return res.status(409).json({error:'This session has been confirmed. Open the final report.'});
 
   if (record.status !== 'PENDING') {
     return res.status(400).json({ error: `Record is already ${record.status}` });

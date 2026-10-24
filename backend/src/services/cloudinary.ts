@@ -48,3 +48,11 @@ export function attendancePhotoDeliveryUrl(value: string | null) {
   if (!asset) return value.startsWith('https://') && !value.includes('/image/authenticated/') ? value : '';
   return cloudinary.url(asset.publicId, { resource_type: 'image', type: 'authenticated', version: asset.version, format: asset.format, secure: true, sign_url: true });
 }
+
+/** Deletes only this project's authenticated attendance assets, never profile photos. */
+export async function deleteAttendanceSelfie(value: string) {
+  const asset = parseAttendanceAsset(value);
+  if (!asset || !isCloudinaryConfigured()) throw new Error('Unsupported attendance asset');
+  const response = await cloudinary.uploader.destroy(asset.publicId, {resource_type:'image', type:'authenticated', invalidate:true});
+  if (response.result !== 'ok' && response.result !== 'not found') throw new Error('Selfie deletion failed');
+}

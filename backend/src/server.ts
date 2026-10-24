@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { env } from './config/env';
+import { startSelfieCleanupWorker } from './services/selfieCleanup';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -62,6 +63,7 @@ app.use(errorHandler);
 // --- Start ---
 const port = parseInt(env.PORT, 10);
 app.listen(port, '0.0.0.0', () => {
+  startSelfieCleanupWorker();
   logger.info({ port, env: env.NODE_ENV }, '🚀 Backend server started');
 });
 

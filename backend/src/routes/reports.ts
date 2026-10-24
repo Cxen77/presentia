@@ -32,6 +32,8 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
     return res.status(403).json({ error: 'Not authorized for this session' });
   }
 
+  if (session.status !== 'CLOSED') return res.status(409).json({error:'Confirm the class photo-verification list before downloading the final sheet.'});
+
   // 2. Load class
   const { data: cls } = await supabaseAdmin
     .from('classes')
@@ -75,7 +77,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
     const rec = recordMap.get(stud.id) as any;
     let finalStatus: 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED' = 'ABSENT';
     if (rec) {
-      finalStatus = rec.status;
+      finalStatus = rec.status === 'REJECTED' ? 'ABSENT' : rec.status;
     }
     return { serialNo: idx + 1, student: stud, status: finalStatus, record: rec || null };
   });
@@ -167,7 +169,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
       ? (item.record?.verifier?.full_name ? `Confirmed by ${item.record.verifier.full_name}` : 'Confirmed')
       : item.status === 'REJECTED'
         ? `Rejected: ${item.record?.rejection_reason || 'Photo mismatch'}`
-        : item.status === 'PENDING' ? 'Awaiting faculty review' : 'Absent / No submission';
+        : item.status === 'PENDING' ? 'Awaiting faculty review' : item.record?.rejection_reason || 'Absent / No submission';
 
     const row = worksheet.addRow([
       index + 1,

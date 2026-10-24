@@ -7,6 +7,8 @@ import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
 import { attendancePhotoDeliveryUrl } from '../services/cloudinary';
+import { batchReviewSchema, reviewDatabaseError } from '../services/batchReview';
+import { cleanupFinalizedSelfies } from '../services/selfieCleanup';
 
 const router = Router();
 
@@ -20,7 +22,7 @@ router.get('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) =
   if (user.role !== 'admin') query.eq('faculty_id', user.profileId);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: 'Could not load attendance sessions.' });
-  return res.json((data || []).map((s: any) => ({ id:s.id, classId:s.class_id, facultyId:s.faculty_id, facultyName:s.faculty?.full_name || '', courseCode:s.class?.course_code || '', className:s.class?.class_name || '', room:s.class?.room || '', date:s.date, startTime:s.start_time || '', endTime:s.end_time || '', status:s.status, currentToken:'', tokenExpiresAt:0, tokenRotationCount:s.token_rotation_count, createdAt:s.created_at, closedAt:s.closed_at })));
+  return res.json((data || []).map((s: any) => ({ id:s.id, classId:s.class_id, facultyId:s.faculty_id, facultyName:s.faculty?.full_name || '', courseCode:s.class?.course_code || '', className:s.class?.class_name || '', room:s.class?.room || '', date:s.date, startTime:s.start_time || '', endTime:s.end_time || '', status:s.status, currentToken:'', tokenExpiresAt:0, tokenRotationCount:s.token_rotation_count, createdAt:s.created_at, closedAt:s.closed_at, finalizedAt:s.finalized_at || null })));
 });
 
 /**
@@ -92,7 +94,7 @@ router.post('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) 
   // Close any existing active sessions for this faculty
   await supabaseAdmin
     .from('attendance_sessions')
-    .update({ status: 'CLOSED', closed_at: new Date().toISOString() })
+    .update({ status: 'AWAITING_VERIFICATION', closed_at: new Date().toISOString() })
     .eq('faculty_id', user.profileId)
     .eq('status', 'ACTIVE');
 
@@ -191,6 +193,7 @@ router.get('/active', requireAuth, requireRole('faculty', 'admin'), async (req, 
     tokenRotationCount: session.token_rotation_count,
     createdAt: session.created_at,
     closedAt: session.closed_at,
+    finalizedAt: session.finalized_at || null,
   });
 });
 
@@ -256,90 +259,47 @@ router.put('/:id/end', requireAuth, requireRole('faculty', 'admin'), async (req,
     return res.status(403).json({ error: 'Not authorized for this session' });
   }
 
-  // Check for pending records
-  const { count: pendingCount } = await supabaseAdmin
-    .from('attendance_records')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', id)
-    .eq('status', 'PENDING');
-
-  const newStatus = (pendingCount || 0) > 0 ? 'AWAITING_VERIFICATION' : 'CLOSED';
-
-  const { data: updated, error } = await supabaseAdmin
-    .from('attendance_sessions')
-    .update({
-      status: newStatus,
-      closed_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  return res.json({
-    id: updated.id,
-    status: updated.status,
-    closedAt: updated.closed_at,
-  });
+  const {data, error} = await supabaseAdmin.rpc('stop_attendance_for_review', {p_session_id:id, p_actor_id:user.profileId});
+  if (error) {const failure = reviewDatabaseError(error); return res.status(failure.status).json({error:failure.error});}
+  return res.json(data);
 });
 
-/**
- * PUT /api/sessions/:id/finalize
- * Finalizes a session — marks all remaining PENDING records as REJECTED and
- * sets status to CLOSED. Only after this can the Excel report be generated.
- */
-router.put('/:id/finalize', requireAuth, requireRole('faculty', 'admin'), async (req, res) => {
-  const user = req.user!;
-  const { id } = req.params;
-
-  const { data: session } = await supabaseAdmin
-    .from('attendance_sessions')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
-  if (session.faculty_id !== user.profileId && user.role !== 'admin') {
-    return res.status(403).json({ error: 'Not authorized for this session' });
-  }
-
-  // Reject remaining PENDING submissions
-  await supabaseAdmin
-    .from('attendance_records')
-    .update({
-      status: 'REJECTED',
-      rejection_reason: 'Session finalized — unverified submission',
-      verified_by: user.profileId,
-      verified_at: new Date().toISOString(),
-    })
-    .eq('session_id', id)
-    .eq('status', 'PENDING');
-
-  // Close the session
-  const { data: updated, error } = await supabaseAdmin
-    .from('attendance_sessions')
-    .update({
-      status: 'CLOSED',
-      closed_at: session.closed_at || new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  return res.json({
-    id: updated.id,
-    status: updated.status,
-    closedAt: updated.closed_at,
+/** Atomically accept all reviewed submissions except the teacher's exclusions. */
+router.put('/:id/confirm-review', requireAuth, requireRole('faculty','admin'), async (req, res) => {
+  const parsed = batchReviewSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error:'Refresh the list and submit a complete class review.'});
+  const {data, error} = await supabaseAdmin.rpc('confirm_attendance_review', {
+    p_session_id:req.params.id, p_actor_id:req.user!.profileId, p_request_id:parsed.data.requestId,
+    p_expected_records:parsed.data.expectedRecords, p_excluded_ids:parsed.data.excludedRecordIds,
   });
+  if (error) {const failure = reviewDatabaseError(error); return res.status(failure.status).json({error:failure.error});}
+  void cleanupFinalizedSelfies(req.params.id).catch(() => logger.warn({sessionId:req.params.id},'Selfie cleanup queued for retry'));
+  return res.json({...data, selfieCleanup:'queued'});
+});
+
+router.get('/:id', requireAuth, requireRole('faculty','admin'), async (req, res) => {
+  const {data:s,error} = await supabaseAdmin.from('attendance_sessions')
+    .select('*,class:class_id(course_code,class_name,room),faculty:faculty_id(full_name)').eq('id',req.params.id).maybeSingle();
+  if (error) return res.status(503).json({error:'Could not load this session.'});
+  if (!s) return res.status(404).json({error:'Session not found.'});
+  if (s.faculty_id !== req.user!.profileId && req.user!.role !== 'admin') return res.status(403).json({error:'Not authorized for this session.'});
+  let cleanupPending = 0;
+  if (s.finalized_at) {
+    const {count,error:cleanupError} = await supabaseAdmin.from('attendance_records').select('id',{count:'exact',head:true})
+      .eq('session_id',s.id).not('verification_photo_url','is',null);
+    if (cleanupError) return res.status(503).json({error:'Could not check selfie cleanup.'});
+    cleanupPending = count || 0;
+  }
+  let token: {token:string;expires_at:string} | null = null;
+  if (s.status === 'ACTIVE') {
+    const {data:latest} = await supabaseAdmin.from('qr_tokens').select('token,expires_at').eq('session_id',s.id)
+      .order('created_at',{ascending:false}).limit(1).maybeSingle();
+    token = latest;
+  }
+  return res.json({id:s.id,classId:s.class_id,facultyId:s.faculty_id,facultyName:s.faculty?.full_name || '',
+    courseCode:s.class?.course_code || '',className:s.class?.class_name || '',room:s.class?.room || '',date:s.date,
+    startTime:s.start_time || '',endTime:s.end_time || '',status:s.status,currentToken:token?.token || '',tokenExpiresAt:token ? new Date(token.expires_at).getTime() : 0,
+    tokenRotationCount:s.token_rotation_count,createdAt:s.created_at,closedAt:s.closed_at,finalizedAt:s.finalized_at || null,selfieCleanupPending:cleanupPending});
 });
 
 /**
@@ -353,7 +313,7 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
   // Verify faculty owns the session
   const { data: session } = await supabaseAdmin
     .from('attendance_sessions')
-    .select('faculty_id')
+    .select('faculty_id,finalized_at')
     .eq('id', id)
     .single();
 
@@ -397,7 +357,7 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     studentClassRollNumber:r.student?.class_roll_number || '',
     studentSection:r.student?.section || '',
     studentAvatarUrl: r.student?.avatar_url || '',
-    verificationPhotoUrl: attendancePhotoDeliveryUrl(r.verification_photo_url),
+    verificationPhotoUrl: session.finalized_at ? '' : attendancePhotoDeliveryUrl(r.verification_photo_url),
     submittedAt: r.submitted_at,
     status: r.status,
     verifiedBy: r.verified_by,

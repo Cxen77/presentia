@@ -6,7 +6,7 @@ Object.assign(process.env, {
   CLOUDINARY_CLOUD_NAME: 'test-cloud', CLOUDINARY_API_KEY: 'test-key', CLOUDINARY_API_SECRET: 'test-secret',
 });
 const { v2: cloudinary } = require('cloudinary');
-const { createUploadPayload, isOwnedAttendancePhoto, attendancePhotoDeliveryUrl } = require('../dist/services/cloudinary');
+const { createUploadPayload, isOwnedAttendancePhoto, attendancePhotoDeliveryUrl, deleteAttendanceSelfie } = require('../dist/services/cloudinary');
 const owner = '11111111-1111-4111-8111-111111111111';
 const publicId = `attendance_verification/${owner}/22222222-2222-4222-8222-222222222222`;
 const version = 1234567890;
@@ -38,4 +38,17 @@ test('faculty delivery uses a signed URL while stored URL stays unsigned', () =>
   assert.equal(new URL(delivery).hostname, 'res.cloudinary.com');
   assert.equal(attendancePhotoDeliveryUrl(null), '');
   assert.equal(attendancePhotoDeliveryUrl('javascript:alert(1)'), '');
+});
+
+test('cleanup only deletes authenticated attendance assets and requests cache invalidation', async () => {
+  const original=cloudinary.uploader.destroy;const calls=[];
+  cloudinary.uploader.destroy=async(...args)=>{calls.push(args);return {result:'ok'};};
+  try {
+    await deleteAttendanceSelfie(url);
+    assert.deepEqual(calls,[[publicId,{resource_type:'image',type:'authenticated',invalidate:true}]]);
+    for(const bad of [url.replace('attendance_verification','student_profiles'),url.replace('test-cloud','other-cloud'),url.replace('/authenticated/','/upload/'),'https://other.example/image.jpg'])await assert.rejects(deleteAttendanceSelfie(bad),/Unsupported/);
+    assert.equal(calls.length,1);
+    cloudinary.uploader.destroy=async()=>({result:'not found'});await deleteAttendanceSelfie(url);
+    cloudinary.uploader.destroy=async()=>({result:'failed'});await assert.rejects(deleteAttendanceSelfie(url),/failed/);
+  } finally {cloudinary.uploader.destroy=original;}
 });
