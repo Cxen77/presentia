@@ -10,6 +10,8 @@ The administrator can view accounts, add faculty, edit faculty and student detai
 
 Students can enter class roll number and section during setup or profile editing. These are separate from the unique university USN. Portal rosters, review queues, and Excel exports sort rolls naturally (2 before 10), with USN fallback. Student management shows expandable class memberships; the class roster can filter by section.
 
+New student setup has seven questions: optional profile photo, full name, USN, required class roll, required section, department, and semester. Chosen profile photos upload to Cloudinary before their URLs are saved. The welcome screen appears only on a first unauthenticated visit, remembered in device/browser storage. A real restored Supabase session routes directly to the dashboard or incomplete profile setup. Returning signed-out users go directly to login; the login screen does not navigate back to welcome.
+
 Delete actions require confirmation in the portal. Classes become inactive and can be restored from Deleted / inactive classes. Enrollment removal sets a dropped status and end time; historical session exports retain the student. Faculty deletion is admin-only, requires reassignment/deletion of active classes, and disables access without deleting historical ownership. The admin can restore deleted faculty. Active attendance sessions block class deletion and enrollment removal. Archived faculty are blocked by backend middleware and restrictive Supabase RLS, including pre-existing sessions. Authenticated clients cannot modify the archived flag. No hard-delete endpoint is exposed.
 
 ## Attendance and calendar

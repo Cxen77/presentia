@@ -12,7 +12,6 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  Dimensions,
   Modal,
   AppState,
 } from 'react-native';
@@ -55,8 +54,6 @@ import {
   SkipForward,
   Presentation,
   X,
-  Scan,
-  TrendingUp,
   RefreshCw,
 } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -70,6 +67,9 @@ import { authErrorMessage } from './src/services/authErrors';
 import { registerStudent } from './src/services/registration';
 import { EmailVerificationForm } from './src/components/EmailVerificationForm';
 import { router } from 'expo-router';
+import { WelcomeScreen } from './src/components/WelcomeScreen';
+import { getUnauthenticatedEntry, markWelcomeSeen } from './src/services/welcomeState';
+import { PROFILE_SETUP_STEPS, profileStepError } from './src/services/profileSetup';
 import { StudentClassCard } from './src/components/StudentClassCard';
 import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
 import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } from './src/components/StudentActivity';
@@ -1034,92 +1034,10 @@ export const QRScannerModal: React.FC<{
 // ============================================================================
 
 // A. ONBOARDING SCREEN
-export const OnboardingScreen: React.FC<{ onGetStarted: () => void }> = ({ onGetStarted }) => {
-  const { height } = Dimensions.get('window');
-  const isCompact = height < 750;
-  const isSuperCompact = height < 680;
-
-  return (
-    <AppBackground variant="onboarding">
-      <View style={[styles.onboardContainer, isCompact && styles.onboardContainerCompact]}>
-        {/* Header Section */}
-        <View style={[styles.onboardHeader, isCompact && { marginBottom: 12 }]}>
-          <Text style={[styles.onboardTitle, isCompact && styles.onboardTitleCompact, isSuperCompact && { fontSize: 26, lineHeight: 30 }]}>
-            Class{'\n'}Attendance{'\n'}
-            <Text style={{ color: '#9AB9EC' }}>Simplified.</Text>
-          </Text>
-          <Text style={[styles.onboardSubtitle, isCompact && { fontSize: 13, marginTop: 4 }]}>
-            Scan • Attend • Stay in Track
-          </Text>
-        </View>
-
-        {/* QR Illustration Graphic */}
-        <View style={[styles.onboardGraphic, isCompact && { marginVertical: 8 }]}>
-          <View style={[
-            styles.phoneOutline,
-            isCompact && styles.phoneOutlineCompact,
-            isSuperCompact && { width: 120, height: 140, borderRadius: 22 }
-          ]}>
-            <QrCode
-              size={isSuperCompact ? 64 : isCompact ? 76 : 94}
-              color="#9AB9EC"
-              strokeWidth={1.5}
-            />
-            <View style={[
-              styles.qrCheckBubble,
-              isCompact && styles.qrCheckBubbleCompact,
-              isSuperCompact && { width: 30, height: 30, borderRadius: 15, bottom: -6, right: -6 }
-            ]}>
-              <Check
-                size={isSuperCompact ? 14 : isCompact ? 16 : 18}
-                color="#FFFFFF"
-                strokeWidth={3}
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* Feature Cards List */}
-        <View style={[styles.featuresList, isCompact && styles.featuresListCompact]}>
-          <View style={[styles.featureItem, isCompact && styles.featureItemCompact]}>
-            <View style={[styles.featureIcon, isCompact && styles.featureIconCompact]}>
-              <Scan size={isCompact ? 16 : 18} color="#9AB9EC" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.featureTitle, isCompact && { fontSize: 14 }]}>Quick Attendance</Text>
-              <Text style={[styles.featureDesc, isCompact && { fontSize: 11 }]}>Scan QR and mark instantly</Text>
-            </View>
-          </View>
-
-          <View style={[styles.featureItem, isCompact && styles.featureItemCompact]}>
-            <View style={[styles.featureIcon, isCompact && styles.featureIconCompact]}>
-              <TrendingUp size={isCompact ? 16 : 18} color="#9AB9EC" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.featureTitle, isCompact && { fontSize: 14 }]}>Track Progress</Text>
-              <Text style={[styles.featureDesc, isCompact && { fontSize: 11 }]}>Stay updated with your courses</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Action Button above safe area */}
-        <View style={[styles.onboardActionWrap, isCompact && { paddingTop: 6 }]}>
-          <TouchableOpacity
-            style={[styles.getStartedBtn, isCompact && styles.getStartedBtnCompact]}
-            onPress={onGetStarted}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.getStartedText}>Get Started</Text>
-            <ArrowRight size={18} color="#061522" strokeWidth={2.5} style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </AppBackground>
-  );
-};
+export const OnboardingScreen: React.FC<{ onGetStarted: () => void }> = ({ onGetStarted }) => <WelcomeScreen onContinue={onGetStarted}/>;
 
 // B. LOGIN SCREEN
-export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => void; onNavigateRegister: () => void; initialError?: string; onClearError?: () => void }> = ({
+export const LoginScreen: React.FC<{ onBack?: () => void; onLoginSuccess: () => void; onNavigateRegister: () => void; initialError?: string; onClearError?: () => void }> = ({
   onBack,
   onLoginSuccess,
   onNavigateRegister,
@@ -1239,14 +1157,14 @@ export const LoginScreen: React.FC<{ onBack: () => void; onLoginSuccess: () => v
   return (
     <AppBackground variant="login">
       <ScrollView contentContainerStyle={styles.screenPadding}>
-        <TouchableOpacity onPress={onBack} style={styles.backArrow}>
+        {onBack && <TouchableOpacity onPress={onBack} style={styles.backArrow}>
           <ArrowLeft size={24} color="#9AB9EC" strokeWidth={2.2} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
         <Text style={styles.authTitle}>Welcome Back</Text>
         <Text style={styles.authSubtitle}>Login to your student account</Text>
 
         <View style={styles.formSection}>
-          {visibleError && (
+          {!!visibleError && (
             <View style={styles.errorBanner}>
               <AlertCircle size={16} color="#F87171" style={{ marginRight: 8, marginTop: 1 }} />
               <Text style={styles.errorBannerText}>{visibleError}</Text>
@@ -1474,22 +1392,10 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
     if (saving) return;
     setSetupError('');
 
-    if (step === 2 && !fullName.trim()) {
-      setSetupError('Please enter your full name to proceed.');
-      return;
-    }
-    if (step === 3 && !usn.trim()) {
-      setSetupError('Please enter your USN / Roll number to proceed.');
-      return;
-    }
-    if (step === 4 && !department) {
-      setDepartment('Computer Science');
-    }
-    if (step === 5 && !semester) {
-      setSemester('3rd');
-    }
+    const error=profileStepError(step,{fullName,usn,classRollNumber,section});
+    if(error){setSetupError(error);return;}
 
-    if (step < 5) {
+    if (step < PROFILE_SETUP_STEPS) {
       setStep((prev) => prev + 1);
     } else {
       handleFinish();
@@ -1522,16 +1428,18 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
   };
 
   const handleFinish = async () => {
+    for(const question of [2,3,4,5]){const error=profileStepError(question,{fullName,usn,classRollNumber,section});if(error){setStep(question);setSetupError(error);return;}}
     setSetupError('');
     setSaving(true);
     try {
+      const avatarUrl = photoUri ? await uploadImageToCloudinary(photoUri) : '';
       const result = await studentService.saveProfile({
         fullName: fullName.trim(),
         rollNumber: usn.trim().toUpperCase(),
         classRollNumber,section,
         department: department.trim(),
         semester: `${semester} Semester`,
-        avatarUrl: photoUri || '',
+        avatarUrl,
       });
       if (!result.success) {
         setSetupError(result.error || 'Your profile could not be saved.');
@@ -1557,9 +1465,9 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
         {/* Progress Bar */}
         <View style={styles.setupProgressRow}>
           <View style={styles.setupProgressTrack}>
-            <View style={[styles.setupProgressFill, { width: `${(step / 5) * 100}%` }]} />
+            <View style={[styles.setupProgressFill, { width: `${(step / PROFILE_SETUP_STEPS) * 100}%` }]} />
           </View>
-          <Text style={styles.setupProgressText}>{step} / 5</Text>
+          <Text style={styles.setupProgressText}>{step} / {PROFILE_SETUP_STEPS}</Text>
         </View>
 
         {/* Step Header */}
@@ -1568,22 +1476,28 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
             {step === 1 && <ImagePlus size={26} color="#9AB9EC" />}
             {step === 2 && <User size={26} color="#9AB9EC" />}
             {step === 3 && <GraduationCap size={26} color="#9AB9EC" />}
-            {step === 4 && <BookOpen size={26} color="#9AB9EC" />}
-            {step === 5 && <Calendar size={26} color="#9AB9EC" />}
+            {step === 4 && <User size={26} color="#9AB9EC" />}
+            {step === 5 && <BookOpen size={26} color="#9AB9EC" />}
+            {step === 6 && <BookOpen size={26} color="#9AB9EC" />}
+            {step === 7 && <Calendar size={26} color="#9AB9EC" />}
           </View>
           <Text style={styles.setupTitle}>
             {step === 1 && 'Add a profile photo'}
             {step === 2 && "What's your full name?"}
-            {step === 3 && 'Your USN / Roll Number'}
-            {step === 4 && 'Which department?'}
-            {step === 5 && 'Current semester'}
+            {step === 3 && 'Your university USN'}
+            {step === 4 && 'Your class roll number'}
+            {step === 5 && 'Which section are you in?'}
+            {step === 6 && 'Which department?'}
+            {step === 7 && 'Current semester'}
           </Text>
           <Text style={styles.setupSub}>
             {step === 1 && 'Appears on student ID & attendance records'}
             {step === 2 && 'As registered with university admissions'}
-            {step === 3 && 'Unique institutional student identifier'}
-            {step === 4 && 'Select your branch of study'}
-            {step === 5 && 'Select your active academic term'}
+            {step === 3 && 'Your unique university student identifier'}
+            {step === 4 && 'Your number on the class attendance register'}
+            {step === 5 && 'Use the section assigned by your department, for example A or B'}
+            {step === 6 && 'Select your branch of study'}
+            {step === 7 && 'Select your active academic term'}
           </Text>
         </View>
 
@@ -1642,14 +1556,14 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
                 onSubmitEditing={goNext}
               />
               <View style={[styles.underlineBar, usn.length > 0 && styles.underlineActive]} />
-              <View style={{flexDirection:'row',gap:14,marginTop:20}}>
-                <View style={{flex:1}}><Text style={styles.underlineLabel}>CLASS ROLL NO.</Text><TextInput accessibilityLabel="Class roll number" style={[styles.underlineInput,{fontSize:18}]} value={classRollNumber} onChangeText={setClassRollNumber} maxLength={20} placeholder="e.g. 12" placeholderTextColor="#3E5E7E"/></View>
-                <View style={{flex:1}}><Text style={styles.underlineLabel}>SECTION</Text><TextInput accessibilityLabel="Section" style={[styles.underlineInput,{fontSize:18}]} value={section} onChangeText={setSection} maxLength={30} autoCapitalize="characters" placeholder="e.g. A" placeholderTextColor="#3E5E7E"/></View>
-              </View>
+
             </View>
           )}
 
-          {step === 4 && (
+          {step === 4 && <View style={styles.underlineGroup}><Text style={styles.underlineLabel}>CLASS ROLL NUMBER</Text><TextInput accessibilityLabel="Class roll number" style={styles.underlineInput} value={classRollNumber} onChangeText={setClassRollNumber} maxLength={20} placeholder="e.g. 12" placeholderTextColor="#3E5E7E" autoFocus returnKeyType="next" onSubmitEditing={goNext}/><View style={[styles.underlineBar,!!classRollNumber.trim() && styles.underlineActive]}/></View>}
+          {step === 5 && <View style={styles.underlineGroup}><Text style={styles.underlineLabel}>SECTION</Text><TextInput accessibilityLabel="Section" style={styles.underlineInput} value={section} onChangeText={setSection} maxLength={30} autoCapitalize="characters" placeholder="e.g. A" placeholderTextColor="#3E5E7E" autoFocus returnKeyType="next" onSubmitEditing={goNext}/><View style={[styles.underlineBar,!!section.trim() && styles.underlineActive]}/></View>}
+
+          {step === 6 && (
             <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
               {departments.map((dept) => {
                 const selected = department === dept;
@@ -1669,7 +1583,7 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
             </ScrollView>
           )}
 
-          {step === 5 && (
+          {step === 7 && (
             <View style={styles.semesterGridWrap}>
               {semesters.map((sem) => {
                 const selected = semester === sem;
@@ -1708,7 +1622,7 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
 
           {/* NEXT / COMPLETE BUTTON: ALWAYS RESPONSIVE */}
           <TouchableOpacity
-            style={[styles.setupNextBtn, step === 5 && styles.setupFinishBtn]}
+            style={[styles.setupNextBtn, step === 7 && styles.setupFinishBtn]}
             onPress={goNext}
             activeOpacity={0.8}
             disabled={saving}
@@ -1717,10 +1631,10 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
               <ActivityIndicator size="small" color="#061522" />
             ) : (
               <>
-                <Text style={[styles.setupNextText, step === 5 && styles.setupFinishText]}>
-                  {step === 5 ? 'Complete Setup' : 'Next'}
+                <Text style={[styles.setupNextText, step === 7 && styles.setupFinishText]}>
+                  {step === 7 ? 'Complete Setup' : 'Next'}
                 </Text>
-                <ArrowRight size={16} color={step === 5 ? '#061522' : '#FFFFFF'} style={{ marginLeft: 6 }} />
+                <ArrowRight size={16} color={step === 7 ? '#061522' : '#FFFFFF'} style={{ marginLeft: 6 }} />
               </>
             )}
           </TouchableOpacity>
@@ -2304,7 +2218,7 @@ export const BottomNavigation: React.FC<{ currentTab: TabName; onSelectTab: (tab
 // ============================================================================
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenName>('onboarding');
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>('login');
   const [currentTab, setCurrentTab] = useState<TabName>('home');
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -2320,7 +2234,12 @@ export default function App() {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
-        if (!session?.user) return;
+        if (!session?.user) {
+          const entry=await getUnauthenticatedEntry();
+          if(active && request===revision)setCurrentScreen(entry);
+          return;
+        }
+        await markWelcomeSeen();
         if (routedUser === session.user.id) return;
         const profile = await studentService.getProfile();
         if (!active || request !== revision) return;
@@ -2378,11 +2297,10 @@ export default function App() {
 
     switch (currentScreen) {
       case 'onboarding':
-        return <OnboardingScreen onGetStarted={() => setCurrentScreen('login')} />;
+        return <OnboardingScreen onGetStarted={() => {void markWelcomeSeen();setCurrentScreen('login');}} />;
       case 'login':
         return (
           <LoginScreen
-            onBack={() => setCurrentScreen('onboarding')}
             // Successful auth is routed by the shared auth-state subscription.
             onLoginSuccess={() => {}}
             initialError={authError}
