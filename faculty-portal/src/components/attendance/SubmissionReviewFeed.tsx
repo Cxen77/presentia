@@ -16,7 +16,7 @@ type Props = {
 function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) return <div className="review-photo-unavailable"><Users size={24}/><span>{src ? 'Photo unavailable' : 'Photo not provided'}</span></div>;
-  return <img src={src} alt={alt} onError={() => setFailed(true)}/>;
+  return <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)}/>;
 }
 
 export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmissions, preview = false, excludedIds, onToggleExcluded }: Props) {

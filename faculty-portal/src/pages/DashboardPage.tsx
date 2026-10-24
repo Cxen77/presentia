@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import type { ClassItem, AttendanceSession } from '../types';
-import { EmptyState, InlineError, PageHeading } from '../components/ui/PortalUI';
+import { EmptyState, InlineError, PageHeading, CourseRowsSkeleton } from '../components/ui/PortalUI';
 import { Stagger, StaggerItem, AnimatedNumber } from '../components/ui/Motion';
 import { easeOut } from '../components/ui/motionEase';
 
@@ -38,7 +38,7 @@ export function DashboardPage() {
     </Stagger>
     <section className="desk-courses">
       <div className="desk-section-heading"><div><h2>Your classes</h2><p>{session ? 'Continue your live session, or open a class.' : 'Choose a course to manage students and attendance.'}</p></div><Link className="text-link" to="/classes">View all<ChevronRight size={14}/></Link></div>
-      {loading ? <p className="desk-loading" role="status">Loading your courses…</p> : !classes.length ? <EmptyState icon={BookOpen} title="Add your first class" description="Create a class and share its enrollment code with your students." action={<Link className="p-button" to="/create-class"><Plus size={14}/>Create class</Link>}/> :
+      {loading ? <CourseRowsSkeleton /> : !classes.length ? <EmptyState icon={BookOpen} title="Add your first class" description="Create a class and share its enrollment code with your students." action={<Link className="p-button" to="/create-class"><Plus size={14}/>Create class</Link>}/> :
       <Stagger className="desk-course-list" gap={0.05}>{classes.map(cls =>
         <StaggerItem key={cls.id}>
           <motion.div className={`desk-course ${session?.classId === cls.id ? 'is-live' : ''}`} whileHover={{ x: 3 }} transition={{ duration: 0.2, ease: easeOut }}>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Calendar, ChevronDown, Download, FileSpreadsheet, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
-import { EmptyState, InlineError, PageHeading } from '../components/ui/PortalUI';
+import { EmptyState, InlineError, PageHeading, RosterSkeleton } from '../components/ui/PortalUI';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { downloadSessionReport } from '../services/api';
 import type { AttendanceSession } from '../types';

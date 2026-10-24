@@ -12,4 +12,24 @@ export default defineConfig({
     port: 5173,
     host: true,
   },
+  // For classrooms: build once, then `npm run preview` serves compressed static
+  // files to every device on the LAN. Never serve 80 users from `npm run dev`.
+  preview: {
+    host: true,
+    port: 4173,
+  },
+  build: {
+    // Split long-lived vendor code so deploys only re-download what changed.
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react'
+          if (/[\\/]motion[\\/]/.test(id)) return 'motion'
+          if (id.includes('@supabase')) return 'supabase'
+          return undefined
+        },
+      },
+    },
+  },
 })

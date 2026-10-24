@@ -26,6 +26,7 @@ import {
   EmptyState,
   InlineError,
   PageHeading,
+  ClassGridSkeleton,
 } from "../components/ui/PortalUI";
 import { SpotlightCard } from "../components/ui/Motion";
 import { easeOut } from "../components/ui/motionEase";
@@ -186,9 +187,7 @@ export function ClassesPage() {
         Deleted / inactive classes
       </label>
       {loading ? (
-        <div className="panel p-6 text-xs text-slate-400" role="status">
-          Loading your classes…
-        </div>
+        <ClassGridSkeleton />
       ) : filtered.length === 0 ? (
         <section className="panel">
           <EmptyState

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense, type CSSProperties } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -8,14 +8,18 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { QuickNavigation } from './components/layout/QuickNavigation';
 import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { ClassesPage } from './pages/ClassesPage';
-import { CreateClassPage } from './pages/CreateClassPage';
-import { LiveAttendancePage } from './pages/LiveAttendancePage';
-import { ReportsPage } from './pages/ReportsPage';
-import {PeoplePage} from './pages/PeoplePage';
-import {StaffProfilePage} from './pages/StaffProfilePage';
-import {InitialPasswordPage} from './pages/InitialPasswordPage';
+import { InitialPasswordPage } from './pages/InitialPasswordPage';
+
+// Route-level chunks: each page downloads only when visited.
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const ClassesPage = lazy(() => import('./pages/ClassesPage').then(m => ({ default: m.ClassesPage })));
+const CreateClassPage = lazy(() => import('./pages/CreateClassPage').then(m => ({ default: m.CreateClassPage })));
+const LiveAttendancePage = lazy(() => import('./pages/LiveAttendancePage').then(m => ({ default: m.LiveAttendancePage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const PeoplePage = lazy(() => import('./pages/PeoplePage').then(m => ({ default: m.PeoplePage })));
+const StaffProfilePage = lazy(() => import('./pages/StaffProfilePage').then(m => ({ default: m.StaffProfilePage })));
+
+const PageLoader = () => <div className="attendance-loading" role="status"><span className="loading-turn" aria-hidden="true">◌</span>Loading…</div>;
 
 const ProtectedRoute: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -61,7 +65,7 @@ const AppLayout: React.FC = () => {
             <motion.div key={pathname} className="page-transition" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8, transition: { duration: 0.16, ease: easeOut } }}
               transition={{ duration: 0.32, ease: easeOut }}>
-              <Outlet />
+              <Suspense fallback={<PageLoader />}><Outlet /></Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

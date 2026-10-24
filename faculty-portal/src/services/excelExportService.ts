@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs';
 import { AttendanceSession, ClassItem, StudentProfile, AttendanceRecord } from '../types';
 
 export interface ExportRosterItem {
@@ -14,6 +13,8 @@ export const exportSessionAttendanceToExcel = async (params: {
   roster: ExportRosterItem[];
   institutionName?: string;
 }) => {
+  // ExcelJS is ~450 KB; load it only when an export actually happens.
+  const { default: ExcelJS } = await import('exceljs');
   const { session, classItem, roster, institutionName = 'DEPARTMENT OF COMPUTER SCIENCE & ENGINEERING' } = params;
 
   const workbook = new ExcelJS.Workbook();

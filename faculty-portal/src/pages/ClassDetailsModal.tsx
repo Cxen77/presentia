@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, Check, RefreshCw, QrCode, Users } from "lucide-react";
 import type { ClassItem, StudentProfile, GeofencePolicy } from "../types";
 import { attendanceDataService } from "../services/attendanceDataService";
-import { Dialog, Disclosure, InlineError } from "../components/ui/PortalUI";
+import { Dialog, Disclosure, InlineError, RosterSkeleton } from "../components/ui/PortalUI";
 import { removeEnrollment } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { GeofencePanel } from "../components/GeofencePanel";
@@ -213,9 +213,7 @@ export function ClassDetailsModal({
           </Disclosure>
         </>
       ) : loading ? (
-        <p className="text-xs text-slate-400" role="status">
-          Loading students…
-        </p>
+        <RosterSkeleton rows={4} />
       ) : !students.length ? (
         <div className="py-6 text-center">
           <Users size={24} className="mx-auto mb-3 text-slate-500" />
