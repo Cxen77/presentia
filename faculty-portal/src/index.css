@@ -397,10 +397,10 @@ input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
 .review-empty p { font-size:12px; color:var(--muted); max-width:310px; line-height:1.7; margin-top:8px; }
 .review-empty-caption { color:var(--accent); font-size:11px; margin-top:22px; display:flex; align-items:center; gap:8px; }
 .review-empty-caption::before { content:''; width:5px; height:5px; border-radius:50%; background:var(--accent); }
-.identity-review { padding:20px; background:var(--surface); border:1px solid var(--border); border-radius:18px; min-height:100%; scroll-snap-align:center; scroll-snap-stop:always; display:flex; flex-direction:column; margin-bottom:16px; transform-origin:center center; transition:transform 320ms cubic-bezier(.2,.8,.2,1),opacity 240ms; }
+.identity-review { padding:20px; background:var(--surface); border:1px solid var(--border); border-radius:18px; min-height:0; scroll-snap-align:start; scroll-snap-stop:always; display:flex; flex-direction:column; margin-bottom:16px; transform-origin:center center; transition:transform 320ms cubic-bezier(.2,.8,.2,1),opacity 240ms; }
 .identity-review.is-current { transform:perspective(1000px) rotateX(0) scale(1); opacity:1; }
-.identity-review.is-before { transform:perspective(1000px) rotateX(9deg) scale(.94); opacity:.48; }
-.identity-review.is-after { transform:perspective(1000px) rotateX(-9deg) scale(.94); opacity:.48; }
+.identity-review.is-before { transform:perspective(1000px) rotateX(2deg) scale(.99); opacity:1; }
+.identity-review.is-after { transform:perspective(1000px) rotateX(-2deg) scale(.99); opacity:1; }
 .identity-review>header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; }
 .identity-review h2 { font-size:17px; font-weight:600; }
 .identity-review header p { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--accent); margin-top:6px; }
@@ -472,7 +472,7 @@ input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
 .review-feed-heading>span { font-size:13px; font-weight:550; }
 .review-feed-heading small { display:flex; align-items:center; gap:5px; color:var(--subtle); font-size:10px; }
 .review-reel { display:grid; grid-template-columns:minmax(0,1fr) 38px; gap:12px; align-items:center; }
-.submission-deck { position:relative; height:clamp(540px,calc(100dvh - 250px),660px); overflow-y:auto; overflow-x:hidden; scroll-snap-type:y mandatory; scroll-padding-block:36px; padding-block:36px; scrollbar-width:none; border-radius:16px; }
+.submission-deck { position:relative; height:clamp(540px,calc(100dvh - 250px),660px); overflow-y:auto; overflow-x:hidden; scroll-snap-type:y proximity; scroll-padding-block:4px; padding-block:4px; scrollbar-width:none; border-radius:16px; }
 .submission-deck::-webkit-scrollbar { display:none; }
 .submission-deck:focus-visible { outline-offset:3px; }
 .submission-deck>.review-empty { min-height:100%; background:var(--surface); border:1px solid var(--border); border-radius:16px; }
@@ -569,3 +569,32 @@ input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
   .review-student-images .review-photo-pair { gap:10px; }
 }
 @media(prefers-reduced-motion:reduce) { .identity-review.is-before,.identity-review.is-after { transform:none; opacity:1; } }
+
+/* Compact comparison rows keep several students available at once. */
+.submission-deck .identity-review { padding:12px 14px; border-radius:12px; margin-bottom:10px; }
+.submission-deck .review-card-layout { grid-template-columns:120px minmax(0,1fr); gap:14px; flex:none; padding:0 0 10px; }
+.submission-deck .review-student-details h2 { font-size:14px; }
+.submission-deck .review-student-details .review-card-position { display:none; }
+.submission-deck .review-student-details .review-usn { margin-top:4px; font-size:10px; }
+.submission-deck .review-student-details dl { margin-top:10px; gap:8px; }
+.submission-deck .review-student-details dt { margin-bottom:2px; }
+.submission-deck .review-student-details dd { font-size:12px; }
+.submission-deck .review-student-state { margin-top:10px; }
+.submission-deck .review-student-details time { margin-top:4px; }
+.submission-deck .review-student-images .review-photo-pair { max-width:260px; gap:10px; }
+.submission-deck .review-photo-pair figcaption { font-size:10px; margin-bottom:5px; }
+.submission-deck .review-decisions { margin-top:0; padding-top:9px; gap:8px; }
+.submission-deck .review-decisions .p-button { min-height:30px; padding:5px 9px; font-size:11px; }
+.submission-deck .review-decisions>p { font-size:9px; margin-top:0; }
+.review-photo-expand { display:block; width:100%; height:100%; cursor:zoom-in; }
+.review-photo-expand:focus-visible { outline-offset:-3px; }
+.expanded-review-photos { max-width:none; width:100%; margin:0; }
+.expanded-review-photos figure>div { max-height:none; }
+@media(max-width:520px) {
+  .submission-deck .review-card-layout { grid-template-columns:100px minmax(0,1fr); gap:10px; }
+  .submission-deck .review-student-details { display:block; }
+  .submission-deck .review-student-details h2 { font-size:13px; }
+  .submission-deck .review-student-details time { text-align:left; }
+  .submission-deck .review-decisions>p { display:none; }
+  .submission-deck .review-student-images .review-photo-pair { gap:7px; }
+}
