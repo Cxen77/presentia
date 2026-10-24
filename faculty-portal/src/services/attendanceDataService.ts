@@ -1,4 +1,5 @@
 import * as api from './api';
+import { getClassesDirect, getActiveSessionDirect } from './directReads';
 import type { AttendanceRecord, AttendanceSession, ClassItem, StudentProfile } from '../types';
 
 // All attendance decisions come from the authenticated backend. Never fabricate
@@ -7,14 +8,24 @@ class AttendanceDataService {
   private listeners = new Set<() => void>();
   subscribe(callback: () => void) { this.listeners.add(callback); return () => { this.listeners.delete(callback); }; }
   private notify() { this.listeners.forEach(callback => callback()); }
-  async getClasses(_facultyId?: string): Promise<ClassItem[]> { return api.getClasses(); }
+  async getClasses(_facultyId?: string): Promise<ClassItem[]> {
+    // Faculty read straight from the database (row-level security applies);
+    // admins and any read failure fall back to the backend.
+    const direct = await getClassesDirect();
+    if (direct.ok) return direct.value;
+    return api.getClasses();
+  }
   async getClassById(id: string) { return (await this.getClasses()).find(item => item.id === id) || null; }
   async createClass(params: Parameters<typeof api.createClass>[0] & { facultyId:string; facultyName:string }): Promise<ClassItem> {
     const created = await api.createClass(params); this.notify(); return created;
   }
   async regenerateEnrollmentCode(id: string): Promise<string> { const result=await api.regenerateEnrollmentCode(id); this.notify(); return result.enrollmentCode; }
   async getEnrolledStudents(id: string,sessionId?:string): Promise<StudentProfile[]> { return api.getEnrolledStudents(id,sessionId); }
-  async getActiveSession(_facultyId: string): Promise<AttendanceSession | null> { return api.getActiveSession(); }
+  async getActiveSession(_facultyId: string): Promise<AttendanceSession | null> {
+    const direct = await getActiveSessionDirect();
+    if (direct.ok) return direct.value;
+    return api.getActiveSession();
+  }
   async getAllSessions(): Promise<AttendanceSession[]> { return api.getSessions(); }
   async startSession(classId: string, _facultyId:string, _facultyName:string): Promise<AttendanceSession> { const session=await api.startSession(classId); this.notify(); return session; }
   async rotateQRToken(id: string): Promise<Partial<AttendanceSession>> { return api.rotateQRToken(id); }
