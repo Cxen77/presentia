@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
-import { attendancePhotoDeliveryUrl } from '../services/cloudinary';
+import { attendancePhotoDeliveryUrl, profilePhotoDeliveryUrl } from '../services/cloudinary';
 import { batchReviewSchema, reviewDatabaseError } from '../services/batchReview';
 import { cleanupFinalizedSelfies } from '../services/selfieCleanup';
 
@@ -356,7 +356,7 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     studentRollNumber: r.student?.roll_number || '',
     studentClassRollNumber:r.student?.class_roll_number || '',
     studentSection:r.student?.section || '',
-    studentAvatarUrl: r.student?.avatar_url || '',
+    studentAvatarUrl: profilePhotoDeliveryUrl(r.student?.avatar_url),
     verificationPhotoUrl: session.finalized_at ? '' : attendancePhotoDeliveryUrl(r.verification_photo_url),
     submittedAt: r.submitted_at,
     status: r.status,

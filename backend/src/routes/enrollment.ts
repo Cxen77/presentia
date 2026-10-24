@@ -57,8 +57,13 @@ router.get('/my-classes', requireAuth, async (req, res) => {
   }
 
   const classIds = (data || []).flatMap((item: any) => item.class ? [item.class.id] : []);
-  const { data: sessions, error: sessionError } = classIds.length ? await supabaseAdmin.from('attendance_sessions').select('id,class_id,status,created_at').in('class_id', classIds).eq('date', new Date().toISOString().slice(0,10)).order('created_at', { ascending:false }) : {data:[],error:null};
-  const { data: records, error: recordError } = classIds.length ? await supabaseAdmin.from('attendance_records').select('session_id,status').eq('student_id',user.profileId).in('class_id',classIds) : {data:[],error:null};
+  // Today's sessions and the student's records are independent — fetch both at once.
+  const [sessionsResult, recordsResult] = classIds.length ? await Promise.all([
+    supabaseAdmin.from('attendance_sessions').select('id,class_id,status,created_at').in('class_id', classIds).eq('date', new Date().toISOString().slice(0,10)).order('created_at', { ascending:false }),
+    supabaseAdmin.from('attendance_records').select('session_id,status').eq('student_id',user.profileId).in('class_id',classIds),
+  ]) : [{ data: [], error: null }, { data: [], error: null }];
+  const { data: sessions, error: sessionError } = sessionsResult;
+  const { data: records, error: recordError } = recordsResult;
   if (sessionError || recordError) return res.status(500).json({error:'Could not refresh class attendance status. Please retry.'});
   const classes = (data || [])
     .filter((item: any) => item.class && item.class.is_active)

@@ -20,6 +20,25 @@ declare global {
   }
 }
 
+// Every request used to re-validate the token with two Supabase round trips.
+// Faculty access tokens outlive this cache many times over; caching the
+// resolved identity for under a minute removes ~250ms from each API call at
+// the cost of revocations taking up to a minute to propagate.
+const AUTH_CACHE_TTL_MS = 60_000;
+const AUTH_CACHE_MAX = 5000;
+const authCache = new Map<string, { user: AuthenticatedUser; expiresAt: number }>();
+
+function cacheUser(token: string, user: AuthenticatedUser) {
+  if (authCache.size >= AUTH_CACHE_MAX) authCache.clear();
+  authCache.set(token, { user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+}
+
+function gatePasswordChange(user: AuthenticatedUser, originalUrl: string): string | null {
+  if (user.requiresPasswordChange && !['/api/auth/me', '/api/auth/initial-password'].includes(originalUrl.split('?')[0]))
+    return 'Change your initial password before accessing the portal.';
+  return null;
+}
+
 /**
  * Middleware: Validates the Supabase access token from the Authorization header,
  * loads the user's profile and role, and attaches it to req.user.
@@ -34,6 +53,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (!token) {
     return res.status(401).json({ error: 'Missing access token' });
   }
+
+  const cached = authCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    const gate = gatePasswordChange(cached.user, req.originalUrl);
+    if (gate) return res.status(403).json({ error: gate, code: 'PASSWORD_CHANGE_REQUIRED' });
+    req.user = cached.user;
+    return next();
+  }
+  authCache.delete(token);
 
   try {
     // Validate the token and get the authenticated user identity
@@ -72,8 +100,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       fullName: profile?.full_name || '',
       requiresPasswordChange:user.app_metadata?.must_change_password===true,
     };
+    cacheUser(token, req.user);
 
-    if(req.user.requiresPasswordChange&&!['/api/auth/me','/api/auth/initial-password'].includes(req.originalUrl.split('?')[0]))return res.status(403).json({error:'Change your initial password before accessing the portal.',code:'PASSWORD_CHANGE_REQUIRED'});
+    const gate = gatePasswordChange(req.user, req.originalUrl);
+    if (gate) return res.status(403).json({ error: gate, code: 'PASSWORD_CHANGE_REQUIRED' });
 
     next();
   } catch (err) {
