@@ -1,30 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { 
-  QrCode, 
-  Clock, 
-  Users, 
-  CheckCircle2, 
-  XCircle, 
-  RefreshCw, 
-  StopCircle, 
-  ShieldAlert,
-  FileSpreadsheet,
-  Play
-} from 'lucide-react';
-import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
+import { QrCode, Clock, Users, CheckCircle2, XCircle, RefreshCw, StopCircle, FileSpreadsheet, Play, Maximize2, ChevronRight } from 'lucide-react';
+import { Dialog, Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { AttendanceSession, ClassItem, AttendanceRecord } from '../types';
+import { SubmissionReviewFeed } from '../components/attendance/SubmissionReviewFeed';
 import { downloadSessionReport } from '../services/api';
 
-function ReviewPhoto({src,alt}:{src:string;alt:string}) {
-  const [failed,setFailed]=useState(false);
-  if(!src||failed)return <div className="h-full flex flex-col items-center justify-center gap-2 p-3 text-slate-400"><Users size={28}/><span className="text-xs">{!src?'Photo not provided':'Photo unavailable'}</span></div>;
-  return <img src={src} alt={alt} onError={()=>setFailed(true)} className="w-full h-full object-cover"/>;
-}
+const PreviewSubmissionReview = import.meta.env.DEV ? React.lazy(() => import('../components/attendance/PreviewSubmissionReview')) : null;
 
 export const LiveAttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -39,6 +25,12 @@ export const LiveAttendancePage: React.FC = () => {
   const [rejectReason, setRejectReason] = useState<string>('Visual photo mismatch with student profile');
   const [confirmEndModal, setConfirmEndModal] = useState<boolean>(false);
   const [exporting,setExporting]=useState(false);
+  const [view, setView] = useState<'PENDING'|'PRESENT'|'REJECTED'>('PENDING');
+  const [loading, setLoading] = useState(true);
+  const [previewEnabled, setPreviewEnabled] = useState(import.meta.env.DEV);
+  const [projectQR, setProjectQR] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [deciding,setDeciding]=useState<string|null>(null);
   const rotating=useRef(false);
   const [starting, setStarting] = useState(false);
@@ -50,8 +42,9 @@ export const LiveAttendancePage: React.FC = () => {
     if (!user) return;
     try {
     const classList = await attendanceDataService.getClasses(user.id);
-    setClasses(classList.filter(c=>c.isActive));
-    setSelectedClassId(previous=>previous || classList[0]?.id || '');
+    const activeClasses = classList.filter(c=>c.isActive);
+    setClasses(activeClasses);
+    setSelectedClassId(previous=>activeClasses.some(cls=>cls.id===previous) ? previous : activeClasses[0]?.id || '');
 
     const session = await attendanceDataService.getActiveSession(user.id);
     setActiveSession(session);
@@ -62,6 +55,7 @@ export const LiveAttendancePage: React.FC = () => {
     } else setRecords([]);
     setStartError(null);
     } catch(error) { setStartError(error instanceof Error ? error.message : 'Could not load attendance.'); }
+    finally {setLoading(false);}
   },[user]);
 
   useEffect(() => {
@@ -171,9 +165,11 @@ export const LiveAttendancePage: React.FC = () => {
   };
 
   const handleEndSession = async () => {
-    if (!activeSession) return;
+    if (!activeSession || ending) return;
+    setEnding(true);
     try {await attendanceDataService.endSession(activeSession.id);setConfirmEndModal(false);navigate('/reports');}
     catch(error){setStartError(error instanceof Error?error.message:'Could not end session.');setConfirmEndModal(false);}
+    finally {setEnding(false);}
   };
 
   const handleDownload=async()=>{if(!activeSession)return;setExporting(true);try{await downloadSessionReport(activeSession.id);}catch(error){setStartError(error instanceof Error?error.message:'Download failed.');}finally{setExporting(false);}};
@@ -195,417 +191,30 @@ export const LiveAttendancePage: React.FC = () => {
     sequence: activeSession.tokenRotationCount,
   }) : '';
 
-  return (
-    <div className="legacy-page page-stack">
-      <PageHeading eyebrow="ATTENDANCE" title={activeSession ? activeSession.className : 'Live attendance'} description={activeSession ? `${activeSession.courseCode} · Review incoming submissions below.` : 'Choose a class, share its QR, and review student submissions.'}
-        action={<div className="flex flex-wrap gap-2"><button className="p-button secondary" onClick={()=>void refreshData()}><RefreshCw size={14}/>Refresh</button>{activeSession&&<><button className="p-button secondary" disabled={exporting||!records.length} onClick={handleDownload}><FileSpreadsheet size={14}/>{exporting?'Downloading…':'Download sheet'}</button>{activeSession.status==='ACTIVE'&&<button className="p-button danger" onClick={() => setConfirmEndModal(true)}><StopCircle size={14} />End session</button>}</>}</div>} />
-      <InlineError message={startError} />
-      {/* No Active Session State: Class Selector */}
-      {!activeSession ? (
-        <div className="session-selector panel space-y-5">
-          <div className="session-icon bg-[#202c3e] border border-[#273548] text-[#b5bafa] flex items-center justify-center">
-            <QrCode size={32} />
+  const decidedRecords = view === 'PRESENT' ? presentRecords : rejectedRecords;
+  return <div className="page-stack attendance-desk">
+    <PageHeading title="Live attendance" description={loading ? 'Loading your attendance session…' : activeSession ? `${activeSession.courseCode} · ${activeSession.className}` : 'Choose a class to open student check-in.'}
+      action={<div className="flex flex-wrap gap-2"><button className={`p-button secondary ${refreshing ? "is-refreshing" : ""}`} disabled={refreshing} onClick={async () => {setRefreshing(true);try {await refreshData();} finally {setRefreshing(false);}}} aria-label="Refresh attendance"><RefreshCw size={14}/><span className="attendance-refresh-label">Refresh</span></button>{activeSession && <><button className="p-button secondary" disabled={exporting || !records.length} onClick={handleDownload}><FileSpreadsheet size={14}/>{exporting ? 'Downloading…' : 'Download sheet'}</button>{activeSession.status === 'ACTIVE' && <button className="p-button secondary" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End session</button>}</>}</div>}/>
+    <InlineError message={startError}/>
+    {loading ? <div className="attendance-loading" role="status"><RefreshCw size={18} className="loading-turn"/>Loading attendance…</div> : !activeSession ? <section className="attendance-start"><div className="attendance-start-mark"><QrCode size={28}/></div><h2>Open your class for check-in</h2><p>Students scan the code and send a selfie. You compare it with their profile photo before confirming attendance.</p><label className="field">Class<select aria-label="Class for attendance" value={selectedClassId} onChange={event => setSelectedClassId(event.target.value)}>{!classes.length && <option value="">No classes available</option>}{classes.map(cls => <option key={cls.id} value={cls.id}>{cls.courseCode} — {cls.className}</option>)}</select></label>{!classes.length && <Link to="/create-class" className="text-link">Create a class first</Link>}<button className="p-button" disabled={!selectedClassId || starting} onClick={() => void handleStartSession()}><Play size={15}/>{starting ? 'Starting…' : 'Start attendance'}</button><Disclosure title="How attendance works"><p>Share the rotating QR with your class. Review each profile photo and selfie, confirm or reject the submission, then download your sheet.</p></Disclosure></section> : <>
+      <div className="attendance-session-meta"><span className="session-state"><span className="desk-state-mark"/>{activeSession.status === 'ACTIVE' ? 'Check-in open' : 'Check-in closed'}</span><span><strong>{totalEnrolled}</strong> enrolled</span><span><strong>{records.length}</strong> submitted</span><span className="session-room">{activeSession.room}</span></div>
+      <div className="attendance-workbench">
+        <aside className="qr-station"><div className="qr-station-heading"><h2>Scan to check in</h2><button className="icon-button" aria-label="Enlarge QR code" onClick={() => setProjectQR(true)}><Maximize2 size={16}/></button></div>
+          <div className="qr-paper">{activeSession.status === 'ACTIVE' ? <div key={activeSession.tokenRotationCount} className="qr-rollover"><QRCodeSVG role="img" aria-label={`Attendance QR code for ${activeSession.courseCode}`} value={qrPayload} size={228} level="H" includeMargin={false}/></div> : <p>Scanning is closed.<br/>You can still review submissions.</p>}</div>
+          {activeSession.status === 'ACTIVE' && <div className="qr-timing"><div><span><Clock size={13}/>Next code</span><strong>{secondsRemaining}s</strong></div><div className="qr-timer-track" role="progressbar" aria-label="QR code validity" aria-valuenow={Math.min(25,secondsRemaining)} aria-valuemin={0} aria-valuemax={25}><span style={{transform:`scaleX(${Math.max(0,Math.min(1,secondsRemaining/25))})`}}/></div><p>The code refreshes every 25 seconds.</p></div>}
+          <div className="qr-course-meta"><span>{activeSession.courseCode}</span><p>{activeSession.className}</p></div>
+          <Disclosure title="Session details"><p>Code rotation {activeSession.tokenRotationCount}. Students must submit a selfie for your review; scanning alone does not mark them present.</p></Disclosure>
+        </aside>
+        <section className="review-workspace" aria-label="Student submission review">
+          <div className="review-tabs" style={{"--review-tab-index": view === "PENDING" ? 0 : view === "PRESENT" ? 1 : 2} as React.CSSProperties} aria-label="Submission status">{([{value:'PENDING',label:'To review',count:pendingRecords.length},{value:'PRESENT',label:'Confirmed',count:presentRecords.length},{value:'REJECTED',label:'Rejected',count:rejectedRecords.length}] as const).map(tab => <button key={tab.value} className={view === tab.value ? 'is-active' : ''} aria-pressed={view === tab.value} onClick={() => setView(tab.value)}>{tab.label}<span>{tab.count}</span></button>)}</div>
+          <div key={view} className="review-view">
+            {view === 'PENDING' ? <>{PreviewSubmissionReview && pendingRecords.length === 0 && <div className="review-preview-notice"><span>{previewEnabled ? 'Design preview · sample photos, not an attendance record' : 'No live submissions waiting'}</span><button onClick={() => setPreviewEnabled(enabled => !enabled)}>{previewEnabled ? 'Show real queue' : 'Show test review'}</button></div>}{PreviewSubmissionReview && previewEnabled && pendingRecords.length === 0 ? <React.Suspense fallback={<p className="desk-loading">Loading test review…</p>}><PreviewSubmissionReview/></React.Suspense> : <SubmissionReviewFeed records={pendingRecords} deciding={deciding} sessionOpen={activeSession.status === 'ACTIVE'} hasSubmissions={records.length > 0} onConfirm={id => void handleConfirmStudent(id)} onReject={record => {setRejectModalRecord(record);setRejectReason('Visual photo mismatch with student profile');}}/>}</> : <div className="decision-register">{!decidedRecords.length ? <div className="review-empty"><span className="review-empty-mark">{view === 'PRESENT' ? <CheckCircle2 size={25}/> : <XCircle size={25}/>}</span><h2>{view === 'PRESENT' ? 'No confirmations yet' : 'No rejected submissions'}</h2><p>{view === 'PRESENT' ? 'Students appear here after you confirm their photos.' : 'Rejected submissions and their reasons appear here.'}</p></div> : <ul>{decidedRecords.map(record => <li key={record.id}><span className="decision-avatar">{record.studentName.slice(0,1).toUpperCase()}</span><div><strong>{record.studentName}</strong><small>{record.studentRollNumber} · Roll {record.studentClassRollNumber || '—'} · Section {record.studentSection || '—'}</small>{view === 'REJECTED' && <p>{record.rejectionReason || 'Photo mismatch'}</p>}</div><span className="decision-result"><span className="decision-label">{view === 'PRESENT' ? <CheckCircle2 size={14}/> : <XCircle size={14}/>} {view === 'PRESENT' ? 'Present' : 'Rejected'}</span>{record.verifiedAt && <time dateTime={new Date(record.verifiedAt).toISOString()}>{new Date(record.verifiedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time>}</span></li>)}</ul>}</div>}
           </div>
-
-          <div>
-            <h2 className="text-xl font-bold text-[#eef2f8]">Start a session</h2>
-            <p className="text-xs text-[#9aabc1] mt-1.5 max-w-md mx-auto">
-              Students use the QR code to submit their attendance for review.
-            </p>
-          </div>
-
-          <div className="space-y-3 text-left">
-            <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider">
-              Class
-            </label>
-            <select
-              aria-label="Class for attendance"
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-[#111b28] border border-[#273548] text-sm text-[#eef2f8] focus:outline-none focus:border-[#b5bafa]"
-            >
-              {!classes.length && <option value="">No classes available</option>}
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.courseCode} — {c.className} ({c.room})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {!classes.length && <p className="text-xs text-slate-400">Create a class before starting attendance. <Link to="/create-class" className="text-link">Create class</Link></p>}
-          <button
-            disabled={!selectedClassId || starting}
-            onClick={() => handleStartSession()}
-            className="w-full py-3.5 px-6 rounded-xl bg-[#F3F2EF] hover:bg-white text-[#101D2C] font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2"
-          >
-            <Play size={17} />
-            <span>{starting ? 'Starting…' : 'Start attendance'}</span>
-          </button>
-          <Disclosure title="How it works"><p>Students scan the rotating QR code and submit a photo. Review each submission before confirming attendance, then end the session to open its report.</p></Disclosure>
-        </div>
-      ) : (
-        /* Active Live Attendance View */
-        <div className="space-y-6">
-          {/* Top Session Stats Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-[#172333] border border-[#273548] rounded-xl p-4 text-center">
-              <span className="text-[11px] text-[#9aabc1] font-semibold uppercase">Enrolled</span>
-              <p className="text-xl font-bold text-[#eef2f8] mt-0.5">{totalEnrolled}</p>
-            </div>
-
-            <div className="bg-[#172333] border border-[#273548] rounded-xl p-4 text-center">
-              <span className="text-[11px] text-[#9aabc1] font-semibold uppercase">Submissions</span>
-              <p className="text-xl font-bold text-[#b5bafa] mt-0.5">{records.length}</p>
-            </div>
-
-            <div className="bg-[#172333] border border-amber-500/40 rounded-xl p-4 text-center bg-amber-950/10">
-              <span className="text-[11px] text-amber-300 font-semibold uppercase">Pending Review</span>
-              <p className="text-xl font-bold text-amber-400 mt-0.5">{pendingRecords.length}</p>
-            </div>
-
-            <div className="bg-[#172333] border border-emerald-500/40 rounded-xl p-4 text-center bg-emerald-950/10">
-              <span className="text-[11px] text-emerald-300 font-semibold uppercase">Confirmed</span>
-              <p className="text-xl font-bold text-emerald-400 mt-0.5">{presentRecords.length}</p>
-            </div>
-
-            <div className="bg-[#172333] border border-red-500/40 rounded-xl p-4 text-center bg-red-950/10">
-              <span className="text-[11px] text-red-300 font-semibold uppercase">Rejected</span>
-              <p className="text-xl font-bold text-red-400 mt-0.5">{rejectedRecords.length}</p>
-            </div>
-          </div>
-
-          {/* Main Attendance Split Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Column (5 Cols): Dynamic QR Code Projector */}
-            <div className="lg:col-span-5 space-y-4">
-              <div className="bg-[#111b28] border-2 border-[#273548] rounded-2xl p-6 text-center space-y-4 shadow-xl sticky top-24">
-                {/* Header status */}
-                <div className="flex items-center justify-between text-xs border-b border-[#273548]/70 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="font-bold text-emerald-400">{activeSession.status==='ACTIVE'?'ACTIVE SESSION':'REVIEW ONLY · SCANNING CLOSED'}</span>
-                  </div>
-                  <span className="text-[11px] text-[#9aabc1] font-mono">
-                    Token #{activeSession.tokenRotationCount}
-                  </span>
-                </div>
-
-                {/* Course Metadata */}
-                <div>
-                  <h3 className="text-lg font-bold text-[#eef2f8]">{activeSession.className}</h3>
-                  <p className="text-xs text-[#b5bafa] font-semibold mt-0.5">
-                    {activeSession.courseCode} • {activeSession.room}
-                  </p>
-                </div>
-
-                {/* QR Display Card */}
-                <div className="bg-white p-4 rounded-xl inline-block mx-auto">
-                  {activeSession.status==='ACTIVE'?<QRCodeSVG
-                    value={qrPayload}
-                    size={210}
-                    level="H"
-                    includeMargin={false}
-                  />:<p className="text-sm text-slate-800 p-5">Session ended.<br/>Review remaining submissions.</p>}
-                </div>
-
-                {/* Countdown and Progress */}
-                <div className="space-y-2 pt-2">
-                  <div className="flex items-center justify-between text-xs text-[#9aabc1]">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <Clock size={13} className="text-[#b5bafa]" />
-                      QR Code Validity:
-                    </span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {secondsRemaining}s remaining
-                    </span>
-                  </div>
-
-                  {/* Countdown Progress Bar */}
-                  <div className="w-full h-2 rounded-full bg-[#172333] overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-[#b5bafa] transition-all duration-1000 ease-linear"
-                      style={{ width: `${(secondsRemaining / 25) * 100}%` }}
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-[#74869d] pt-1">
-                    Auto-refreshes every 25s with anti-replay signature. Screenshots are invalidated automatically.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column (7 Cols): Side-by-Side Verification Queue & Confirmed Roster */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* Section 1: Pending Visual Verification Requests */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-bold text-[#eef2f8] flex items-center gap-2">
-                      <span>Pending Identity Verification</span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {pendingRecords.length} Awaiting
-                      </span>
-                    </h2>
-                    <p className="text-xs text-[#9aabc1] mt-0.5">
-                      Visually inspect the student's registered university photo side-by-side with their live camera verification photo.
-                    </p>
-                  </div>
-                </div>
-
-                {pendingRecords.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl bg-[#172333] border border-dashed border-[#273548]">
-                    <CheckCircle2 size={32} className="mx-auto text-emerald-400 mb-2" />
-                    <p className="text-sm font-semibold text-[#eef2f8]">All Submissions Reviewed</p>
-                    <p className="text-xs text-[#9aabc1] mt-1">
-                      No incoming student scans are currently awaiting photo verification.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {pendingRecords.map((record) => (
-                      <div
-                        key={record.id}
-                        className="bg-[#172333] border-2 border-amber-500/50 rounded-2xl p-5 shadow-lg space-y-4"
-                      >
-                        {/* Student Name Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-[#273548]/60">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-base font-bold text-[#eef2f8]">{record.studentName}</h3>
-                              <span className="font-mono text-xs text-[#b5bafa] bg-[#202c3e] px-2 py-0.5 rounded border border-[#273548]">
-                                {record.studentRollNumber} · Roll {record.studentClassRollNumber || '—'} · Section {record.studentSection || '—'}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-[#9aabc1] mt-0.5">
-                              Scanned at {new Date(record.submittedAt).toLocaleTimeString()}
-                            </p>
-                          </div>
-
-                          <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            Awaiting Decision
-                          </span>
-                        </div>
-
-                        {/* Side-by-Side Photo Comparison */}
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* Left: Registered University Profile Photo */}
-                          <div className="space-y-1.5 text-center">
-                            <span className="text-[11px] font-semibold text-[#9aabc1] uppercase tracking-wider block">
-                              1. Registered Profile
-                            </span>
-                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#273548] bg-[#111b28]">
-                              <ReviewPhoto key={record.studentAvatarUrl} src={record.studentAvatarUrl} alt={`Registered profile photo of ${record.studentName}`}/>
-                              <div className="absolute bottom-1 left-1 right-1 bg-[#0b111b]/80 backdrop-blur-sm py-0.5 text-[10px] text-[#9aabc1] rounded">
-                                Database Record
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right: Live Current Attendance Verification Photo */}
-                          <div className="space-y-1.5 text-center">
-                            <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider block">
-                              2. Live Camera Snapshot
-                            </span>
-                            <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-[#111b28]">
-                              <ReviewPhoto key={record.verificationPhotoUrl} src={record.verificationPhotoUrl} alt={`Attendance selfie of ${record.studentName}`}/>
-                              <div className="absolute bottom-1 left-1 right-1 bg-emerald-950/80 backdrop-blur-sm py-0.5 text-[10px] text-emerald-300 rounded font-medium">
-                                Captured in Classroom
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Decision Buttons */}
-                        {record.checkinLocation&&<details className="rounded-xl border border-[#31455e] bg-[#142535] p-3 text-xs"><summary className="cursor-pointer text-slate-300">Location · {record.checkinLocation.campusRestricted?`${record.checkinLocation.distanceM} m from campus centre`:'Campus restriction off'}</summary><div className="mt-3 space-y-2 text-slate-400"><p>Device: {record.checkinLocation.submission.platform} · GPS accuracy ±{Math.round(record.checkinLocation.submission.accuracy)} m</p><p>Mock GPS: {record.checkinLocation.submission.mocked===false?'not reported by device':'check unavailable'} · Developer Options: unavailable</p><p>Scan: {record.checkinLocation.scan.latitude.toFixed(5)}, {record.checkinLocation.scan.longitude.toFixed(5)}</p><p>Submission: {record.checkinLocation.submission.latitude.toFixed(5)}, {record.checkinLocation.submission.longitude.toFixed(5)}</p><p>Received {new Date(record.checkinLocation.receivedAt).toLocaleTimeString()}</p></div></details>}
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <button
-                            disabled={!!deciding}
-                            onClick={() => {
-                              setRejectModalRecord(record);
-                              setRejectReason('Visual photo mismatch with registered student profile');
-                            }}
-                            className="py-2.5 px-4 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-300 text-xs font-bold transition-all flex items-center justify-center gap-2"
-                          >
-                            <XCircle size={16} />
-                            <span>Reject Submission</span>
-                          </button>
-
-                          <button
-                            disabled={!!deciding}
-                            onClick={() => handleConfirmStudent(record.id)}
-                            className="py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#0b111b] text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle2 size={16} />
-                            <span>{deciding===record.id?'Saving…':'Confirm Present'}</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 2: Confirmed Present Roster */}
-              <div className="space-y-3 pt-4 border-t border-[#273548]/60">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-[#eef2f8] flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-emerald-400" />
-                    <span>Confirmed Present ({presentRecords.length})</span>
-                  </h3>
-                  <span className="text-xs text-[#74869d]">Verified & Authoritative</span>
-                </div>
-
-                {presentRecords.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-[#172333] border border-[#273548] text-center text-xs text-[#9aabc1]">
-                    No students have been confirmed present yet.
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-[#273548] overflow-hidden bg-[#172333]">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-[#202c3e] text-[#9aabc1] border-b border-[#273548] uppercase font-semibold text-[11px]">
-                        <tr>
-                          <th className="py-2 px-4">Student</th>
-                          <th className="py-2 px-4">USN / Roll No</th>
-                          <th className="py-2 px-4">Verified Time</th>
-                          <th className="py-2 px-4 text-center">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#273548]/60 text-[#eef2f8]">
-                        {presentRecords.map((r) => (
-                          <tr key={r.id} className="hover:bg-[#202c3e]/40 transition-colors">
-                            <td className="py-2 px-4 flex items-center gap-2.5">
-                              {r.studentAvatarUrl&&<img
-                                src={r.studentAvatarUrl}
-                                alt={r.studentName}
-                                className="w-6 h-6 rounded-full object-cover border border-[#273548]"
-                              />}
-                              <span className="font-semibold">{r.studentName}</span>
-                            </td>
-                            <td className="py-2 px-4 font-mono text-[#b5bafa]">{r.studentRollNumber}</td>
-                            <td className="py-2 px-4 text-[#9aabc1]">
-                              {r.verifiedAt ? new Date(r.verifiedAt).toLocaleTimeString() : 'Just now'}
-                            </td>
-                            <td className="py-2 px-4 text-center">
-                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                                Present
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Section 3: Rejected Submissions (Audit log) */}
-              {rejectedRecords.length > 0 && (
-                <div className="space-y-3 pt-2">
-                  <h3 className="text-sm font-bold text-red-300 flex items-center gap-2">
-                    <XCircle size={16} />
-                    <span>Rejected Submissions ({rejectedRecords.length})</span>
-                  </h3>
-                  <div className="rounded-xl border border-red-500/30 bg-red-950/10 divide-y divide-red-500/20 text-xs">
-                    {rejectedRecords.map((r) => (
-                      <div key={r.id} className="p-3 flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-[#eef2f8]">{r.studentName} ({r.studentRollNumber})</p>
-                          <p className="text-[11px] text-red-300/80 mt-0.5">Reason: {r.rejectionReason || 'Photo mismatch'}</p>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
-                          Rejected
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reject Reason Confirmation Modal */}
-      {rejectModalRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#111b28] border border-[#273548] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3 text-red-400">
-              <ShieldAlert size={22} />
-              <h3 className="text-base font-bold text-[#eef2f8]">Reject Attendance Submission</h3>
-            </div>
-
-            <p className="text-xs text-[#9aabc1]">
-              Rejecting attendance for <strong>{rejectModalRecord.studentName}</strong> ({rejectModalRecord.studentRollNumber}). This record will not be counted as present.
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#9aabc1] uppercase tracking-wider mb-2">
-                Rejection Reason
-              </label>
-              <select
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[#172333] border border-[#273548] text-xs text-[#eef2f8] focus:outline-none"
-              >
-                <option value="Visual photo mismatch with student profile">Visual photo mismatch with student profile</option>
-                <option value="Student not physically present in classroom">Student not physically present in classroom</option>
-                <option value="Photo blurry, dark, or obscured">Photo blurry, dark, or obscured</option>
-                <option value="Proxy attempt or screen replay photo">Proxy attempt or screen replay photo</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3">
-              <button
-                onClick={() => setRejectModalRecord(null)}
-                className="px-4 py-2 rounded-lg bg-[#172333] hover:bg-[#202c3e] text-xs font-semibold text-[#9aabc1]"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!!deciding}
-                onClick={handleRejectStudent}
-                className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow"
-              >
-                Confirm Rejection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* End Session Confirmation Modal */}
-      {confirmEndModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#111b28] border border-[#273548] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-[#eef2f8]">End Live Attendance Session?</h3>
-            <p className="text-xs text-[#9aabc1] leading-relaxed">
-              This will stop the dynamic QR generator and prevent any new student submissions. 
-              {pendingRecords.length > 0 && (
-                <span className="block mt-2 font-semibold text-amber-300">
-                  Note: There are still {pendingRecords.length} pending submissions awaiting your photo review.
-                </span>
-              )}
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-3">
-              <button
-                onClick={() => setConfirmEndModal(false)}
-                className="px-4 py-2 rounded-lg bg-[#172333] hover:bg-[#202c3e] text-xs font-semibold text-[#9aabc1]"
-              >
-                Continue Session
-              </button>
-              <button
-                onClick={handleEndSession}
-                className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow"
-              >
-                Yes, End Session & View Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+        </section>
+      </div>
+    </>}
+    {projectQR && activeSession && <Dialog title={activeSession.courseCode + ' check-in'} onClose={() => setProjectQR(false)}><div className="projected-qr">{activeSession.status === 'ACTIVE' ? <QRCodeSVG role="img" aria-label={`Attendance QR code for ${activeSession.courseCode}`} value={qrPayload} size={460} level="H" includeMargin/> : <p>Scanning is closed.</p>}<p>{activeSession.className}</p><span>Scan with the student app</span></div></Dialog>}
+    {rejectModalRecord && <Dialog title="Reject submission" onClose={() => {if(!deciding)setRejectModalRecord(null);}}><p className="review-dialog-copy">{rejectModalRecord.studentName} will not be marked present. Choose a reason for the attendance record.</p><label className="field">Reason<select value={rejectReason} onChange={event => setRejectReason(event.target.value)}><option>Visual photo mismatch with student profile</option><option>Student not physically present in classroom</option><option>Photo blurry, dark, or obscured</option><option>Proxy attempt or screen replay photo</option></select></label><div className="review-dialog-actions"><button className="p-button secondary" disabled={!!deciding} onClick={() => setRejectModalRecord(null)}>Cancel</button><button className="p-button" disabled={!!deciding} onClick={() => void handleRejectStudent()}>{deciding ? 'Saving…' : 'Reject submission'}</button></div></Dialog>}
+    {confirmEndModal && <Dialog title="End this session?" onClose={() => {if(!ending)setConfirmEndModal(false);}}><p className="review-dialog-copy">Students will no longer be able to scan or submit. Your attendance records will remain available.</p>{pendingRecords.length > 0 && <p className="review-dialog-copy">{pendingRecords.length} submissions still need your review.</p>}<div className="review-dialog-actions"><button className="p-button secondary" disabled={ending} onClick={() => setConfirmEndModal(false)}>Keep session open</button><button className="p-button" disabled={ending} onClick={() => void handleEndSession()}>{ending ? 'Ending…' : 'End session and view report'}<ChevronRight size={14}/></button></div></Dialog>}
+  </div>;
 };
