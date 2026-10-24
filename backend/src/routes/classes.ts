@@ -215,11 +215,19 @@ router.get('/:id/students', requireAuth, requireRole('faculty', 'admin'), async 
     return res.status(404).json({ error: 'Class not found' });
   }
 
-  if (user.role === 'faculty' && cls.faculty_id !== user.profileId) {
+  let rosterAt: string | null = null;
+  let sessionOwner: string | null = null;
+  if(req.query.sessionId !== undefined){
+    const parsedId=z.string().uuid().safeParse(req.query.sessionId);if(!parsedId.success)return res.status(400).json({error:'Invalid session ID.'});
+    const {data:session}=await supabaseAdmin.from('attendance_sessions').select('created_at,faculty_id').eq('id',parsedId.data).eq('class_id',id).maybeSingle();
+    if(!session)return res.status(404).json({error:'Session not found for this class.'});
+    rosterAt=session.created_at;sessionOwner=session.faculty_id;
+  }
+  if (user.role === 'faculty' && (sessionOwner || cls.faculty_id) !== user.profileId) {
     return res.status(403).json({ error: 'You do not manage this class' });
   }
 
-  const { data: enrollments, error } = await supabaseAdmin
+  let rosterQuery = supabaseAdmin
     .from('class_enrollments')
     .select(`
       id,
@@ -238,8 +246,9 @@ router.get('/:id/students', requireAuth, requireRole('faculty', 'admin'), async 
         avatar_url
       )
     `)
-    .eq('class_id', id)
-    .eq('status', 'active');
+    .eq('class_id', id);
+  rosterQuery=rosterAt ? rosterQuery.lte('enrolled_at',rosterAt).or(`ended_at.is.null,ended_at.gte.${rosterAt}`) : rosterQuery.eq('status','active');
+  const {data:enrollments,error}=await rosterQuery;
 
   if (error) {
     logger.error({ err: error }, 'Error fetching enrolled students');

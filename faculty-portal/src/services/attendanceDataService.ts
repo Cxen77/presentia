@@ -13,7 +13,7 @@ class AttendanceDataService {
     const created = await api.createClass(params); this.notify(); return created;
   }
   async regenerateEnrollmentCode(id: string): Promise<string> { const result=await api.regenerateEnrollmentCode(id); this.notify(); return result.enrollmentCode; }
-  async getEnrolledStudents(id: string): Promise<StudentProfile[]> { return api.getEnrolledStudents(id); }
+  async getEnrolledStudents(id: string,sessionId?:string): Promise<StudentProfile[]> { return api.getEnrolledStudents(id,sessionId); }
   async getActiveSession(_facultyId: string): Promise<AttendanceSession | null> { return api.getActiveSession(); }
   async getAllSessions(): Promise<AttendanceSession[]> { return api.getSessions(); }
   async startSession(classId: string, _facultyId:string, _facultyName:string): Promise<AttendanceSession> { const session=await api.startSession(classId); this.notify(); return session; }
@@ -27,7 +27,7 @@ class AttendanceDataService {
   async getSessionFullRoster(id: string) {
     const session=(await this.getAllSessions()).find(item => item.id === id);
     if (!session) return null;
-    const [classItem, students, records]=await Promise.all([this.getClassById(session.classId),this.getEnrolledStudents(session.classId),this.getSessionRecords(id)]);
+    const [classItem, students, records]=await Promise.all([this.getClassById(session.classId),this.getEnrolledStudents(session.classId,session.id),this.getSessionRecords(id)]);
     if (!classItem) return null;
     const roster=students.map((student,index)=>{ const record=records.find(item=>item.studentId===student.id); return {serialNo:index+1,student,status:record?.status || 'ABSENT' as const,record}; });
     const count=(status:string)=>roster.filter(item=>item.status===status).length;

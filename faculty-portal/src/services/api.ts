@@ -117,8 +117,8 @@ export async function createClass(data: {
   return apiRequest('/api/classes', { method: 'POST', body: data });
 }
 
-export async function getEnrolledStudents(classId: string) {
-  return apiRequest(`/api/classes/${classId}/students`);
+export async function getEnrolledStudents(classId: string,sessionId?:string) {
+  return apiRequest(`/api/classes/${classId}/students${sessionId ? '?sessionId='+encodeURIComponent(sessionId) : ''}`);
 }
 
 export async function regenerateEnrollmentCode(classId: string) {

@@ -309,7 +309,7 @@ export const ReportsPage: React.FC = () => {
                                     </div>
                                   </td>
                                   <td className="py-2.5 px-4 font-mono text-[#b5bafa]">
-                                    {item.student.rollNumber}
+                                    {item.student.rollNumber}<span className="block text-[10px] text-slate-400 mt-1">Roll {item.student.classRollNumber || '—'} · Section {item.student.section || '—'}</span>
                                   </td>
                                   <td className="py-2.5 px-4 text-center">
                                     {getRecordStatusBadge(item.status)}

@@ -224,7 +224,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
         <>
           <div className="stats-grid">
             {[
-              ["Faculty", people.filter((p) => p.role === "faculty").length],
+              ["Faculty", people.filter((p) => p.role === "faculty" && !p.archivedAt).length],
               ["Students", people.filter((p) => p.role === "student").length],
               [
                 "Administrator",
@@ -337,7 +337,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                       {p.role === "student" && (
                         <details className="mt-2">
                           <summary className="cursor-pointer text-indigo-200">
-                            {p.classes?.length || 0} classes
+                            {p.classes?.length || 0} {p.classes?.length === 1 ? 'class' : 'classes'}
                           </summary>
                           <ul className="mt-2 space-y-2">
                             {p.classes?.map((c) => (
