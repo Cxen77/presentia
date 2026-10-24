@@ -1,4 +1,5 @@
 import React from "react";
+import { Colors } from "../theme/colors";
 import {
   ScrollView,
   StatusBar,
@@ -29,7 +30,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
       >
         <View style={s.header}>
           <View style={s.brand}>
-            <Scan size={23} color="#d6e5d7" strokeWidth={1.7} />
+            <Scan size={23} color={Colors.textBrightBlue} strokeWidth={1.7} />
             <Text style={s.wordmark}>
               Presentia<Text style={s.brandDot}>.</Text>
             </Text>
@@ -72,7 +73,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
               </View>
               <View style={s.ticketMain}>
                 <View style={s.qr}>
-                  <QrCode size={62} color="#182b27" strokeWidth={1.5} />
+                  <QrCode size={62} color={Colors.textDarkNavy} strokeWidth={1.5} />
                 </View>
                 <View style={s.ticketCopy}>
                   <Text style={s.ticketHeading}>
@@ -86,7 +87,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
               <View style={s.ticketRule} />
               <View style={s.ticketFooter}>
                 <Text style={s.ticketFooterText}>SHOW UP AS YOU.</Text>
-                <ArrowRight size={17} color="#53685a" />
+                <ArrowRight size={17} color={Colors.textDarkMuted} />
               </View>
             </View>
           </View>
@@ -100,7 +101,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
               <View key={n} style={s.step}>
                 <View style={s.stepTop}>
                   <Text style={s.stepNumber}>{n}</Text>
-                  <Icon size={15} color="#93aaa5" strokeWidth={1.5} />
+                  <Icon size={15} color={Colors.textAccentBlue} strokeWidth={1.5} />
                 </View>
                 <Text style={s.stepLabel}>{label}</Text>
               </View>
@@ -116,7 +117,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
             style={s.continue}
           >
             <Text style={s.continueText}>Get started</Text>
-            <ArrowRight size={19} color="#14251f" />
+            <ArrowRight size={19} color={Colors.buttonPrimaryText} />
           </TouchableOpacity>
           <Text style={s.note}>Sign in or create your student account.</Text>
         </View>
@@ -125,7 +126,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   );
 }
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#101b23" },
+  root: { flex: 1, backgroundColor: Colors.background },
   page: {
     flexGrow: 1,
     paddingHorizontal: 27,
@@ -144,12 +145,12 @@ const s = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
     letterSpacing: -0.8,
-    color: "#f1f0e9",
+    color: Colors.textPrimary,
   },
-  brandDot: { color: "#acc6ad" },
+  brandDot: { color: Colors.textAccentBlue },
   edition: {
     fontSize: 8,
-    color: "#8a9c9f",
+    color: Colors.textMuted,
     letterSpacing: 1.6,
     fontWeight: "600",
   },
@@ -160,26 +161,26 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#b8cbb3" },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.textBrightBlue },
   kickerText: {
     fontSize: 7,
     fontWeight: "600",
     letterSpacing: 0.8,
-    color: "#92a6a6",
+    color: Colors.textMuted,
   },
   title: {
     fontSize: 49,
     lineHeight: 54,
     fontWeight: "500",
     letterSpacing: -2.3,
-    color: "#eeeee6",
+    color: Colors.textPrimary,
   },
   compactTitle: { fontSize: 43, lineHeight: 48 },
-  titleMuted: { color: "#9eafa9" },
+  titleMuted: { color: Colors.textAccentBlue },
   description: {
     fontSize: 13,
     lineHeight: 21,
-    color: "#9badb1",
+    color: Colors.textSecondary,
     marginTop: 16,
     maxWidth: 285,
   },
@@ -196,12 +197,12 @@ const s = StyleSheet.create({
     left: 7,
     right: 7,
     borderWidth: 1,
-    borderColor: "#465853",
+    borderColor: Colors.borderInputFocused,
     borderRadius: 18,
     transform: [{ rotate: "4deg" }],
   },
   ticket: {
-    backgroundColor: "#e8eadc",
+    backgroundColor: Colors.cardProfile,
     borderRadius: 17,
     padding: 19,
     transform: [{ rotate: "-3deg" }],
@@ -213,7 +214,7 @@ const s = StyleSheet.create({
   },
   ticketEyebrow: {
     fontSize: 8,
-    color: "#536454",
+    color: Colors.textDarkMuted,
     letterSpacing: 1.5,
     fontWeight: "700",
   },
@@ -221,7 +222,7 @@ const s = StyleSheet.create({
   ticketMarkDot: {
     width: 3,
     height: 3,
-    backgroundColor: "#849381",
+    backgroundColor: Colors.textDarkMuted,
     borderRadius: 2,
   },
   ticketMain: {
@@ -231,20 +232,20 @@ const s = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 21,
   },
-  qr: { padding: 10, borderWidth: 1, borderColor: "#b9c5b2", borderRadius: 13 },
+  qr: { padding: 10, borderWidth: 1, borderColor: Colors.badgeSemesterBg, borderRadius: 13 },
   ticketCopy: { flex: 1 },
   ticketHeading: {
     fontSize: 23,
     lineHeight: 26,
     letterSpacing: -0.7,
     fontWeight: "600",
-    color: "#24372c",
+    color: Colors.textDarkNavy,
   },
-  ticketSmall: { fontSize: 9, lineHeight: 14, color: "#6d7d6d", marginTop: 8 },
+  ticketSmall: { fontSize: 9, lineHeight: 14, color: Colors.textDarkMuted, marginTop: 8 },
   ticketRule: {
     borderTopWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#b7c1af",
+    borderColor: Colors.badgeSemesterBg,
   },
   ticketFooter: {
     flexDirection: "row",
@@ -256,13 +257,13 @@ const s = StyleSheet.create({
     fontSize: 7,
     fontWeight: "600",
     letterSpacing: 1.7,
-    color: "#657562",
+    color: Colors.textDarkMuted,
   },
   steps: { flexDirection: "row", gap: 15 },
   step: {
     flex: 1,
     borderTopWidth: 1,
-    borderTopColor: "#34444b",
+    borderTopColor: Colors.borderSubtle,
     paddingTop: 10,
   },
   stepTop: {
@@ -270,18 +271,18 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  stepNumber: { fontSize: 9, color: "#788f91", fontVariant: ["tabular-nums"] },
-  stepLabel: { fontSize: 10, color: "#bdc8c7", marginTop: 8 },
+  stepNumber: { fontSize: 9, color: Colors.textMuted, fontVariant: ["tabular-nums"] },
+  stepLabel: { fontSize: 10, color: Colors.textSecondary, marginTop: 8 },
   bottom: { gap: 12 },
   continue: {
     minHeight: 52,
     paddingHorizontal: 20,
     borderRadius: 15,
-    backgroundColor: "#e7eadc",
+    backgroundColor: Colors.buttonPrimaryBg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  continueText: { fontSize: 14, fontWeight: "600", color: "#14251f" },
-  note: { fontSize: 10, textAlign: "center", color: "#7d9398" },
+  continueText: { fontSize: 14, fontWeight: "600", color: Colors.buttonPrimaryText },
+  note: { fontSize: 10, textAlign: "center", color: Colors.textMuted },
 });
