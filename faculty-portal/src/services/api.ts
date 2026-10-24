@@ -134,8 +134,12 @@ export async function endSession(sessionId: string) {
   return apiRequest(`/api/sessions/${sessionId}/end`, { method: 'PUT' });
 }
 
-export async function finalizeSession(sessionId: string) {
-  return apiRequest(`/api/sessions/${sessionId}/finalize`, { method: 'PUT' });
+export type BatchReview = {requestId:string; expectedRecords:{id:string;status:'PENDING'|'PRESENT'|'REJECTED'}[]; excludedRecordIds:string[]};
+export async function finalizeSession(sessionId: string, review: BatchReview) {
+  return apiRequest(`/api/sessions/${sessionId}/confirm-review`, { method: 'PUT', body:review });
+}
+export async function getSession(sessionId:string):Promise<import('../types').AttendanceSession> {
+  return apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
 export async function getSessionRecords(sessionId: string) {

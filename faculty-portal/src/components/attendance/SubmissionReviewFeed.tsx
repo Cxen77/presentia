@@ -9,8 +9,8 @@ type Props = {
   sessionOpen: boolean;
   hasSubmissions: boolean;
   preview?: boolean;
-  onConfirm: (id: string) => void;
-  onReject: (record: AttendanceRecord) => void;
+  excludedIds: ReadonlySet<string>;
+  onToggleExcluded: (id:string) => void;
 };
 
 function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
@@ -19,7 +19,7 @@ function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} onError={() => setFailed(true)}/>;
 }
 
-export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmissions, preview = false, onConfirm, onReject }: Props) {
+export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmissions, preview = false, excludedIds, onToggleExcluded }: Props) {
   const feedRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<string | null>(null);
   const [photoRecord, setPhotoRecord] = useState<AttendanceRecord | null>(null);
@@ -63,7 +63,7 @@ export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmis
   };
 
   return <div className="submission-review-feed">
-    <div className="review-feed-heading"><span>Photo review</span><small><MoveVertical size={12} aria-hidden="true"/>Scroll for the next student</small></div>
+    <div className="review-feed-heading"><span>Student submissions</span><small><MoveVertical size={12} aria-hidden="true"/>Scroll for the next student</small></div>
     <div className="review-reel">
       <div ref={feedRef} className="submission-deck" tabIndex={records.length ? 0 : -1} role="region" aria-label="Pending student photo comparisons" onWheel={() => {scrollTargetRef.current = null;}} onTouchStart={() => {scrollTargetRef.current = null;}} onKeyDown={event => {
         if (event.target !== event.currentTarget) return;
@@ -72,15 +72,15 @@ export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmis
         if (event.key === 'Home') { event.preventDefault(); goTo(0); }
         if (event.key === 'End') { event.preventDefault(); goTo(records.length - 1); }
       }}>
-        {!records.length ? <div className="review-empty"><span className="review-empty-mark"><Users size={25}/></span><h2>{hasSubmissions ? 'You’re up to date' : 'Ready for your students'}</h2><p>{hasSubmissions ? 'New submissions will appear here for review.' : 'Each student’s profile photo and selfie will appear here after they submit.'}</p><span className="review-empty-caption">{sessionOpen ? 'Check-in is open' : 'Check-in is closed'}</span></div> : records.map((record, index) => <article className={`identity-review ${index === activeIndex ? "is-current" : index < activeIndex ? "is-before" : "is-after"}`} data-review-id={record.id} key={record.id} onFocusCapture={() => setActiveId(record.id)} aria-label={`Review ${record.studentName}, roll ${record.studentClassRollNumber || 'not set'}`}>
+        {!records.length ? <div className="review-empty"><span className="review-empty-mark"><Users size={25}/></span><h2>{hasSubmissions ? 'You’re up to date' : 'Ready for your students'}</h2><p>{hasSubmissions ? 'New submissions will appear here for review.' : 'Each student’s profile photo and selfie will appear here after they submit.'}</p><span className="review-empty-caption">{sessionOpen ? 'Check-in is open' : 'Check-in is closed'}</span></div> : records.map((record, index) => <article className={`identity-review ${index === activeIndex ? "is-current" : index < activeIndex ? "is-before" : "is-after"} ${excludedIds.has(record.id) ? "is-excluded" : ""}`} data-review-id={record.id} key={record.id} onFocusCapture={() => setActiveId(record.id)} aria-label={`Review ${record.studentName}, roll ${record.studentClassRollNumber || 'not set'}`}>
           <div className="review-card-layout">
-            <aside className="review-student-details"><span className="review-card-position">Student {String(index + 1).padStart(2, '0')}</span><h2>{record.studentName}</h2><p className="review-usn">{record.studentRollNumber}</p><dl><div><dt>Roll no.</dt><dd>{record.studentClassRollNumber || '—'}</dd></div><div><dt>Section</dt><dd>{record.studentSection || '—'}</dd></div></dl><span className="review-student-state">{preview ? 'Design preview' : 'Awaiting review'}</span><time dateTime={record.submittedAt}>{new Date(record.submittedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></aside>
+            <aside className="review-student-details"><span className="review-card-position">Student {String(index + 1).padStart(2, '0')}</span><h2>{record.studentName}</h2><p className="review-usn">{record.studentRollNumber}</p><dl><div><dt>Roll no.</dt><dd>{record.studentClassRollNumber || '—'}</dd></div><div><dt>Section</dt><dd>{record.studentSection || '—'}</dd></div></dl><span className="review-student-state">{preview ? 'Design preview' : excludedIds.has(record.id) ? 'Will be absent' : 'Included in confirmation'}</span><time dateTime={record.submittedAt}>{new Date(record.submittedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></aside>
             <div className="review-student-images">
           <div className="review-photo-pair"><figure><figcaption>{preview ? "Sample profile" : "Profile photo"}</figcaption><div><button className="review-photo-expand" aria-label={`Enlarge profile and selfie for ${record.studentName}`} onClick={() => setPhotoRecord(record)}><ReviewPhoto key={record.studentAvatarUrl} src={record.studentAvatarUrl} alt={`Registered profile photo of ${record.studentName}`}/></button></div></figure><figure><figcaption>{preview ? "Sample selfie" : "Attendance selfie"}</figcaption><div><button className="review-photo-expand" aria-label={`Enlarge selfie and profile for ${record.studentName}`} onClick={() => setPhotoRecord(record)}><ReviewPhoto key={record.verificationPhotoUrl} src={record.verificationPhotoUrl} alt={`Attendance selfie of ${record.studentName}`}/></button></div></figure></div>
           {record.checkinLocation && <Disclosure title="Location details" description={record.checkinLocation.campusRestricted ? `${record.checkinLocation.distanceM} m from campus centre` : 'Campus restriction off'}><p><MapPin size={13} className="inline"/> {record.checkinLocation.submission.platform} · GPS accuracy ±{Math.round(record.checkinLocation.submission.accuracy)} m</p><p>Mock GPS: {record.checkinLocation.submission.mocked === false ? 'not reported by device' : 'check unavailable'} · Developer Options: unavailable</p><p>Scan: {record.checkinLocation.scan.latitude.toFixed(5)}, {record.checkinLocation.scan.longitude.toFixed(5)}</p><p>Submission: {record.checkinLocation.submission.latitude.toFixed(5)}, {record.checkinLocation.submission.longitude.toFixed(5)}</p><p>Received {new Date(record.checkinLocation.receivedAt).toLocaleTimeString()}</p></Disclosure>}
             </div>
           </div>
-          <footer className="review-decisions"><p>{preview ? "Design preview · decisions are disabled" : "Compare both photos before deciding."}</p><div><button className="p-button secondary" disabled={preview || !!deciding} onClick={() => onReject(record)}><XCircle size={15}/>Reject</button><button className="p-button" disabled={preview || !!deciding} onClick={() => onConfirm(record.id)}><CheckCircle2 size={15}/>{deciding === record.id ? 'Saving…' : 'Confirm present'}</button></div></footer>
+          <footer className="review-exclusion"><label><input type="checkbox" aria-label={`Mark ${record.studentName} absent`} checked={excludedIds.has(record.id)} disabled={!!deciding} onChange={() => onToggleExcluded(record.id)}/><span>{excludedIds.has(record.id) ? 'Excluded from confirmation' : 'Exclude this student'}</span></label><span>{excludedIds.has(record.id) ? <XCircle size={13}/> : <CheckCircle2 size={13}/>} {excludedIds.has(record.id) ? 'Will be absent' : 'Will be present'}</span></footer>
         </article>)}
       </div>
       <div className="review-scrubber" aria-label="Review navigation">

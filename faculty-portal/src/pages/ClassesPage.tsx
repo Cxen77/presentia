@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
 import {
   BookOpen,
   Search,
@@ -19,12 +20,15 @@ import type { ClassItem } from "../types";
 import { ClassDetailsModal } from "./ClassDetailsModal";
 import { deleteClass, updateClass } from "../services/api";
 import { EditClassDialog } from "./EditClassDialog";
+import { notify } from "../services/toast";
 import {
   Dialog,
   EmptyState,
   InlineError,
   PageHeading,
 } from "../components/ui/PortalUI";
+import { SpotlightCard } from "../components/ui/Motion";
+import { easeOut } from "../components/ui/motionEase";
 
 export function ClassesPage() {
   const { user } = useAuth();
@@ -76,8 +80,10 @@ export function ClassesPage() {
     try {
       await deleteClass(cls.id);
       await load();
+      notify.success(`${cls.courseCode} deleted`, "Attendance history is retained. Restore it from Deleted classes.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete class.");
+      notify.error("Could not delete class.");
     } finally {
       setDeleting(null);
     }
@@ -86,8 +92,10 @@ export function ClassesPage() {
     try {
       await updateClass(cls.id, { isActive: true });
       await load();
+      notify.success(`${cls.courseCode} restored`, "Students can check in again.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restore class.");
+      notify.error("Could not restore class.");
     }
   };
   const startAttendance = async (classId: string) => {
@@ -136,32 +144,39 @@ export function ClassesPage() {
           </button>
         </div>
       </div>
-      {filtersOpen && (
-        <div
-          id="class-filters"
-          className="panel flex flex-wrap items-center gap-3 p-3"
-        >
-          <label className="text-xs text-slate-400" htmlFor="class-type-filter">
-            Class type
-          </label>
-          <select
-            id="class-type-filter"
-            className="filter-select"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
+      <AnimatePresence initial={false}>
+        {filtersOpen && (
+          <motion.div
+            id="class-filters"
+            className="panel flex flex-wrap items-center gap-3 p-3"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25, ease: easeOut }}
+            style={{ overflow: "hidden" }}
           >
-            <option value="ALL">All types</option>
-            <option>Theory</option>
-            <option>Practical</option>
-            <option>Seminar</option>
-          </select>
-          {type !== "ALL" && (
-            <button className="text-link" onClick={() => setType("ALL")}>
-              Reset filter
-            </button>
-          )}
-        </div>
-      )}
+            <label className="text-xs text-slate-400" htmlFor="class-type-filter">
+              Class type
+            </label>
+            <select
+              id="class-type-filter"
+              className="filter-select"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+            >
+              <option value="ALL">All types</option>
+              <option>Theory</option>
+              <option>Practical</option>
+              <option>Seminar</option>
+            </select>
+            {type !== "ALL" && (
+              <button className="text-link" onClick={() => setType("ALL")}>
+                Reset filter
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <label className="text-xs text-slate-400 flex gap-2 items-center">
         <input
           type="checkbox"
@@ -210,50 +225,60 @@ export function ClassesPage() {
         </section>
       ) : (
         <div className="class-grid">
-          {filtered.map((cls) => (
-            <article className="panel class-card" key={cls.id}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="course-badge">{cls.courseCode}</span>
-                <span className="text-[10px] text-slate-400">
-                  {cls.classType}
-                </span>
-              </div>
-              <h2 title={cls.className}>{cls.className}</h2>
-              <p className="mt-1 text-[11px] text-slate-400">
-                {cls.semester} · {cls.department}
-              </p>
-              <div className="class-card-meta">
-                <span>
-                  <Clock size={12} />
-                  {cls.scheduleInfo || "Schedule not set"}
-                </span>
-                {cls.room && (
-                  <span>
-                    <MapPin size={12} />
-                    {cls.room}
-                  </span>
-                )}
-              </div>
-              <div className="class-card-footer">
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                  <Users size={13} />
-                  {cls.enrolledStudentsCount ?? 0} enrolled
-                </span>
-                <button
-                  className="p-button secondary small"
-                  onClick={() => setSelected(cls)}
-                  aria-label={`Open ${cls.className}`}
-                >
-                  Open class
-                  <ArrowUpRight size={13} />
-                </button>
-              </div>
-              <div className="class-options">
-                {showDeleted && <button className="text-link" onClick={() => void restore(cls)}>Restore class</button>}
-                <button className="icon-button" disabled={deleting === cls.id} aria-label={`Options for ${cls.courseCode}`} onClick={() => setOptionsFor(cls)}><MoreHorizontal size={17}/></button>
-              </div>
-            </article>
-          ))}
+          <AnimatePresence mode="popLayout" initial={true}>
+            {filtered.map((cls) => (
+              <motion.div
+                layout
+                key={cls.id}
+                initial={{ opacity: 0, y: 16, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: easeOut } }}
+                exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.18 } }}
+              >
+                <SpotlightCard className="panel class-card" style={{ height: "100%" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="course-badge">{cls.courseCode}</span>
+                    <span className="text-[10px] text-slate-400">
+                      {cls.classType}
+                    </span>
+                  </div>
+                  <h2 title={cls.className}>{cls.className}</h2>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {cls.semester} · {cls.department}
+                  </p>
+                  <div className="class-card-meta">
+                    <span>
+                      <Clock size={12} />
+                      {cls.scheduleInfo || "Schedule not set"}
+                    </span>
+                    {cls.room && (
+                      <span>
+                        <MapPin size={12} />
+                        {cls.room}
+                      </span>
+                    )}
+                  </div>
+                  <div className="class-card-footer">
+                    <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <Users size={13} />
+                      {cls.enrolledStudentsCount ?? 0} enrolled
+                    </span>
+                    <button
+                      className="p-button secondary small"
+                      onClick={() => setSelected(cls)}
+                      aria-label={`Open ${cls.className}`}
+                    >
+                      Open class
+                      <ArrowUpRight size={13} />
+                    </button>
+                  </div>
+                  <div className="class-options">
+                    {showDeleted && <button className="text-link" onClick={() => void restore(cls)}>Restore class</button>}
+                    <button className="icon-button" disabled={deleting === cls.id} aria-label={`Options for ${cls.courseCode}`} onClick={() => setOptionsFor(cls)}><MoreHorizontal size={17}/></button>
+                  </div>
+                </SpotlightCard>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
       {optionsFor && <Dialog title={optionsFor.courseCode + " options"} onClose={() => setOptionsFor(null)}><div className="account-actions">

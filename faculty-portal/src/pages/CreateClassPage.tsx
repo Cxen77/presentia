@@ -1,9 +1,12 @@
 import { useEffect,useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarClock, Check, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { Disclosure, InlineError, PageHeading } from '../components/ui/PortalUI';
+import { easeOut } from '../components/ui/motionEase';
+import { notify } from '../services/toast';
 import {getManagedPeople,type ManagedPerson} from '../services/api';
 export function CreateClassPage() {
   const { user } = useAuth(); const navigate = useNavigate();
@@ -21,6 +24,7 @@ export function CreateClassPage() {
     setSubmitting(true);
     try {
       await attendanceDataService.createClass({ ...form, courseCode:form.courseCode.trim().toUpperCase(), className:form.className.trim(), department:form.department.trim(), semester:form.semester.trim(), room:form.room.trim(), facultyId:user.role==='admin'?facultyId:user.id, facultyName:user.name });
+      notify.success('Class created', `${form.courseCode.toUpperCase()} is ready. Share its enrollment code with students.`);
       navigate('/classes');
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create the class. Please try again.'); }
     finally { setSubmitting(false); }
@@ -31,6 +35,8 @@ export function CreateClassPage() {
       <div className="form-steps" aria-label="Class creation progress"><span className={step === 1 ? 'current' : 'complete'} aria-current={step === 1 ? 'step' : undefined}><span>{step > 1 ? <Check size={12} /> : '1'}</span>Course details</span><div /><span className={step === 2 ? 'current' : ''} aria-current={step === 2 ? 'step' : undefined}><span>2</span>Schedule & finish</span></div>
       <InlineError message={error} />
       {user?.role==='admin'&&<label className="field panel p-4">Assigned faculty<select required value={facultyId} onChange={e=>setFacultyId(e.target.value)}><option value="">Choose faculty…</option>{faculty.map(person=><option key={person.id} value={person.id}>{person.name} · {person.loginId}</option>)}</select></label>}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={step} initial={{ opacity: 0, x: 22 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.28, ease: easeOut }} style={{ display: 'grid', gap: 14 }}>
       {step === 1 ? <section className="panel form-section"><h2 className="section-heading"><BookOpen />Course details</h2><div className="field-grid">
         <label className="field" htmlFor="course-code">Course code<input id="course-code" required minLength={2} maxLength={20} placeholder="e.g. CS201" value={form.courseCode} onChange={e => update('courseCode',e.target.value.toUpperCase())} autoFocus /></label>
         <label className="field" htmlFor="class-type">Class type<select id="class-type" value={form.classType} onChange={e => update('classType',e.target.value)}><option>Theory</option><option>Practical</option><option>Seminar</option></select></label>
@@ -45,6 +51,8 @@ export function CreateClassPage() {
         <label className="field" htmlFor="credits">Academic credits<input id="credits" type="number" min={1} max={10} value={form.credits} onChange={e => update('credits',Number(e.target.value))} /></label>
         <label className="field col-span-2" htmlFor="description">Description <span className="field-note">Optional · up to 500 characters</span><textarea id="description" rows={3} maxLength={500} placeholder="A short introduction to the course…" value={form.description} onChange={e => update('description',e.target.value)} /></label>
       </div></Disclosure></>}
+        </motion.div>
+      </AnimatePresence>
       <div className="form-footer">{step === 1 ? <Link className="p-button secondary" to="/classes">Cancel</Link> : <button className="p-button secondary" type="button" disabled={submitting} onClick={() => { setStep(1); setError(null); }}><ArrowLeft size={13} />Back</button>}
         <button type="submit" className="p-button" disabled={submitting}>{submitting ? 'Creating…' : step === 1 ? 'Continue' : 'Create class'}{step === 1 ? <ArrowRight size={14} /> : <Check size={14} />}</button></div>
     </form><aside className="panel form-preview"><p className="eyebrow">CLASS PREVIEW</p><span className="course-badge">{form.courseCode || 'COURSE CODE'}</span><h2 className="preview-course">{form.className || 'Your class name'}</h2><p>{form.department || 'Department'}<br />{form.semester || 'Semester / section'}</p><div className="preview-rule" /><div className="flex items-center gap-2 mb-2"><KeyRound size={15} className="text-indigo-300" /><h2>Ready to share</h2></div><p>A unique enrollment code is created when you save. Find it by opening the class.</p></aside></div>

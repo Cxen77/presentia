@@ -67,6 +67,8 @@ export interface AttendanceSession {
   tokenRotationCount: number;
   createdAt: string;
   closedAt?: string;
+  finalizedAt?: string | null;
+  selfieCleanupPending?: number;
 }
 
 export type AttendanceRecordStatus = 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED';

@@ -10,5 +10,6 @@ export default function PreviewSubmissionReview() {
     studentAvatarUrl: samplePhoto, verificationPhotoUrl: samplePhoto,
     submittedAt: new Date().toISOString(), status: 'PENDING',
   }));
-  return <SubmissionReviewFeed records={[record]} deciding={null} sessionOpen hasSubmissions={false} preview onConfirm={() => {}} onReject={() => {}}/>;
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  return <SubmissionReviewFeed records={[record]} deciding={null} sessionOpen hasSubmissions={false} preview excludedIds={excluded} onToggleExcluded={id => setExcluded(previous => previous.has(id) ? new Set() : new Set([id]))}/>;
 }

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { GraduationCap, Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {supabase} from '../services/supabase';
+import { AuroraBackdrop } from '../components/ui/Motion';
+import { easeOut } from '../components/ui/motionEase';
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle,refreshUser } = useAuth();
@@ -45,18 +48,24 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="login-layout">
-      <div className="w-full max-w-[370px]">
+      <AuroraBackdrop />
+      <motion.div className="w-full max-w-[370px]" initial="hidden" animate="show" variants={{ hidden: {}, show: {} }}>
         {/* Portal Branding */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#172333] border border-[#273548] text-[#b5bafa] mb-4 shadow-xl">
+        <motion.div className="text-center mb-6" variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: easeOut } } }}>
+          <motion.div
+            className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#172333] border border-[#273548] text-[#b5bafa] mb-4 shadow-xl login-brand-mark"
+            initial={{ scale: 0.7, rotate: -8 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
+          >
             <GraduationCap size={25} strokeWidth={1.8} />
-          </div>
+          </motion.div>
           <h1 className="text-xl font-semibold text-[#eef2f8] tracking-tight">Staff workspace</h1>
           <p className="text-sm text-[#9aabc1] mt-1.5">Your classes and attendance, in one place.</p>
-        </div>
+        </motion.div>
 
         {/* Card */}
-        <div className="bg-[#111b28] border border-[#273548] rounded-xl p-5 shadow-sm">
+        <motion.div className="bg-[#111b28] border border-[#273548] rounded-xl p-5 shadow-sm login-card-surface" variants={{ hidden: { opacity: 0, y: 22 }, show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: easeOut, delay: 0.12 } } }}>
           {error && (
             <div className="mb-5 p-3.5 rounded-lg bg-red-950/40 border border-red-500/40 flex items-start gap-3">
               <ShieldAlert size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
@@ -156,15 +165,15 @@ export const LoginPage: React.FC = () => {
           </form>
           <button type="button" className="p-button ghost w-full mt-3" onClick={()=>{setVerifyMode(true);setVerificationEmail(email.includes('@')?email:'');setError(null);}}>Verify email / enter confirmation code</button>
           </>}
-        </div>
+        </motion.div>
 
         {/* Security Warning */}
-        <div className="mt-6 text-center">
+        <motion.div className="mt-6 text-center" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.6, delay: 0.35 } } }}>
           <p className="text-xs text-[#74869d] leading-relaxed max-w-sm mx-auto">
             Faculty and administrators use this portal. Student accounts use the student app.
           </p>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 };

@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { easeOut } from './components/ui/motionEase';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { QuickNavigation } from './components/layout/QuickNavigation';
@@ -54,7 +57,13 @@ const AppLayout: React.FC = () => {
       <div className="portal-content" inert={mobileOpen}>
         <Header onMenuToggle={() => setMobileOpen(true)} menuOpen={mobileOpen} onQuickNavigation={()=>setQuickOpen(true)} />
         <main id="main-content" className="portal-main" tabIndex={-1}>
-          <div className="page-transition" key={pathname}><Outlet /></div>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={pathname} className="page-transition" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8, transition: { duration: 0.16, ease: easeOut } }}
+              transition={{ duration: 0.32, ease: easeOut }}>
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
       {quickOpen&&<QuickNavigation onClose={()=>setQuickOpen(false)}/>}
@@ -85,6 +94,9 @@ const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
+      <Toaster position="bottom-right" toastOptions={{
+        style: { background: '#142b40', border: '1px solid #263d52', color: '#f3f2ef', fontSize: '13px', borderRadius: '10px' },
+      }} />
     </BrowserRouter>
   );
 };
