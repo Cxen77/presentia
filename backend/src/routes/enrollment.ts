@@ -61,7 +61,7 @@ router.get('/my-classes', requireAuth, async (req, res) => {
   const { data: records, error: recordError } = classIds.length ? await supabaseAdmin.from('attendance_records').select('session_id,status').eq('student_id',user.profileId).in('class_id',classIds) : {data:[],error:null};
   if (sessionError || recordError) return res.status(500).json({error:'Could not refresh class attendance status. Please retry.'});
   const classes = (data || [])
-    .filter((item: any) => item.class)
+    .filter((item: any) => item.class && item.class.is_active)
     .map((item: any) => {
       const cls = item.class;
       const latest = sessions?.find((session: any) => session.class_id === cls.id);
@@ -229,7 +229,7 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     // Re-activate a previously dropped enrollment
     const { error: reactivateError } = await supabaseAdmin
       .from('class_enrollments')
-      .update({ status: 'active' })
+      .update({ status: 'active', ended_at:null })
       .eq('id', existing.id);
 
     if (reactivateError) {
@@ -250,7 +250,7 @@ router.post('/join', requireAuth, requireRole('student'), async (req, res) => {
     .insert({
       student_id: user.profileId,
       class_id: cls.id,
-      status: 'active',
+      status: 'active',ended_at:null,
     });
 
   if (enrollError) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Search,
   Pencil,
@@ -8,15 +8,19 @@ import {
   ShieldCheck,
   Users,
   RefreshCw,
-} from 'lucide-react';
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
 import {
   Dialog,
   EmptyState,
   InlineError,
   PageHeading,
-} from '../components/ui/PortalUI';
+} from "../components/ui/PortalUI";
 import {
   createFacultyAccount,
+  deleteFaculty,
+  restoreFaculty,
   getManagedPeople,
   getManagedStudents,
   resetFacultyPassword,
@@ -24,32 +28,35 @@ import {
   saveManagedStudent,
   type ManagedPerson,
   type FacultyCredentials,
-} from '../services/api';
-import { supabase } from '../services/supabase';
+} from "../services/api";
+import { supabase } from "../services/supabase";
 export function PeoplePage({ admin = false }: { admin?: boolean }) {
   const [people, setPeople] = useState<ManagedPerson[]>([]),
-    [tab, setTab] = useState<'faculty' | 'student'>('faculty'),
-    [search, setSearch] = useState(''),
+    [tab, setTab] = useState<"faculty" | "student">("faculty"),
+    [search, setSearch] = useState(""),
     [error, setError] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [showDeleted, setShowDeleted] = useState(false);
   const [editing, setEditing] = useState<ManagedPerson | null>(null),
     [adding, setAdding] = useState(false),
     [credentials, setCredentials] = useState<FacultyCredentials | null>(null),
     [copied, setCopied] = useState(false);
   const [form, setForm] = useState({
-    fullName: '',
-    email: '',
-    department: '',
-    rollNumber: '',
-    semester: '',
+    fullName: "",
+    email: "",
+    department: "",
+    rollNumber: "",
+    semester: "",
+    classRollNumber: "",
+    section: "",
   });
   const load = useCallback(async () => {
     try {
       setPeople(await (admin ? getManagedPeople() : getManagedStudents()));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load people.');
+      setError(e instanceof Error ? e.message : "Could not load people.");
     } finally {
       setLoading(false);
     }
@@ -64,11 +71,47 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
   }, [credentials]);
   const shown = people.filter(
     (p) =>
-      p.role === (admin ? tab : 'student') &&
-      `${p.name} ${p.email} ${p.loginId}`
+      p.role === (admin ? tab : "student") &&
+      !!p.archivedAt === showDeleted &&
+      `${p.name} ${p.email} ${p.loginId} ${p.classRollNumber || ""} ${p.section || ""} ${(p.classes || []).map((c) => c.name + " " + c.code).join(" ")}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  shown.sort((a, b) =>
+    (a.classRollNumber || a.loginId || "").localeCompare(
+      b.classRollNumber || b.loginId || "",
+      "en",
+      { numeric: true, sensitivity: "base" },
+    ),
+  );
+  const removeFaculty = async (person: ManagedPerson) => {
+    if (
+      !window.confirm(
+        `Delete faculty access for ${person.name}? They will be blocked from the portal. Reassign or delete their active classes first. Existing attendance history is retained; an admin can restore access.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await deleteFaculty(person.id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete faculty.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const restore = async (person: ManagedPerson) => {
+    setBusy(true);
+    try {
+      await restoreFaculty(person.id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not restore faculty.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const edit = (person: ManagedPerson) => {
     setError(null);
     setEditing(person);
@@ -76,8 +119,10 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
       fullName: person.name,
       email: person.email,
       department: person.department,
-      rollNumber: person.loginId || '',
-      semester: person.semester || '',
+      rollNumber: person.loginId || "",
+      semester: person.semester || "",
+      classRollNumber: person.classRollNumber || "",
+      section: person.section || "",
     });
   };
   const save = async (event: FormEvent) => {
@@ -93,7 +138,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
         });
         setAdding(false);
         setCredentials(result);
-      } else if (editing?.role === 'faculty')
+      } else if (editing?.role === "faculty")
         await saveManagedFaculty(editing.id, {
           fullName: form.fullName,
           department: form.department,
@@ -104,11 +149,13 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
           department: form.department,
           rollNumber: form.rollNumber,
           semester: form.semester,
+          classRollNumber: form.classRollNumber,
+          section: form.section,
         });
       setEditing(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save account.');
+      setError(e instanceof Error ? e.message : "Could not save account.");
     } finally {
       setBusy(false);
     }
@@ -124,7 +171,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
     try {
       setCredentials(await resetFacultyPassword(person.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not reset credentials.');
+      setError(e instanceof Error ? e.message : "Could not reset credentials.");
     } finally {
       setBusy(false);
     }
@@ -132,12 +179,12 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
   return (
     <div className="page-stack">
       <PageHeading
-        eyebrow={admin ? 'ADMINISTRATION' : 'YOUR CLASSES'}
-        title={admin ? 'People & access' : 'Students'}
+        eyebrow={admin ? "ADMINISTRATION" : "YOUR CLASSES"}
+        title={admin ? "People & access" : "Students"}
         description={
           admin
-            ? 'Manage faculty access and student records. The administrator role is reserved for the single owner.'
-            : 'Edit details for students enrolled in classes you manage.'
+            ? "Manage faculty access and student records. The administrator role is reserved for the single owner."
+            : "Edit details for students enrolled in classes you manage."
         }
         action={
           <div className="flex gap-2">
@@ -155,11 +202,13 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                   setAdding(true);
                   setError(null);
                   setForm({
-                    fullName: '',
-                    email: '',
-                    department: '',
-                    rollNumber: '',
-                    semester: '',
+                    fullName: "",
+                    email: "",
+                    department: "",
+                    rollNumber: "",
+                    semester: "",
+                    classRollNumber: "",
+                    section: "",
                   });
                 }}
               >
@@ -175,11 +224,11 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
         <>
           <div className="stats-grid">
             {[
-              ['Faculty', people.filter((p) => p.role === 'faculty').length],
-              ['Students', people.filter((p) => p.role === 'student').length],
+              ["Faculty", people.filter((p) => p.role === "faculty").length],
+              ["Students", people.filter((p) => p.role === "student").length],
               [
-                'Administrator',
-                people.filter((p) => p.role === 'admin').length,
+                "Administrator",
+                people.filter((p) => p.role === "admin").length,
               ],
             ].map(([label, count]) => (
               <div className="panel p-4" key={label}>
@@ -190,19 +239,35 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
           </div>
           <div className="flex gap-2">
             <button
-              className={`p-button small ${tab === 'faculty' ? '' : 'secondary'}`}
-              onClick={() => setTab('faculty')}
+              className={`p-button small ${tab === "faculty" ? "" : "secondary"}`}
+              onClick={() => {
+                setTab("faculty");
+                setShowDeleted(false);
+              }}
             >
               Faculty
             </button>
             <button
-              className={`p-button small ${tab === 'student' ? '' : 'secondary'}`}
-              onClick={() => setTab('student')}
+              className={`p-button small ${tab === "student" ? "" : "secondary"}`}
+              onClick={() => {
+                setTab("student");
+                setShowDeleted(false);
+              }}
             >
               Students
             </button>
           </div>
         </>
+      )}
+      {admin && tab === "faculty" && (
+        <label className="text-xs text-slate-400 flex gap-2 items-center">
+          <input
+            type="checkbox"
+            checked={showDeleted}
+            onChange={(e) => setShowDeleted(e.target.checked)}
+          />
+          Show deleted faculty
+        </label>
       )}
       <label className="search-field">
         <Search size={16} />
@@ -224,8 +289,8 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
             title="No matching accounts"
             description={
               admin
-                ? 'Add a faculty account or adjust your search.'
-                : 'Students will appear after enrolling in your classes.'
+                ? "Add a faculty account or adjust your search."
+                : "Students will appear after enrolling in your classes."
             }
           />
         </section>
@@ -237,7 +302,8 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                 <tr>
                   <th className="p-4">Name</th>
                   <th className="p-4">ID / USN</th>
-                  <th className="p-4">Department</th>
+                  <th className="p-4">Roll / Section</th>
+                  <th className="p-4">Department & classes</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -251,9 +317,41 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                       </p>
                     </td>
                     <td className="p-4 font-mono text-indigo-200">
-                      {p.loginId || '—'}
+                      {p.loginId || "—"}
                     </td>
-                    <td className="p-4 text-slate-400">{p.department}</td>
+                    <td className="p-4 text-slate-400">
+                      {p.role === "student" ? (
+                        <>
+                          <p>Roll {p.classRollNumber || "—"}</p>
+                          <p className="mt-1 text-[10px]">
+                            Section {p.section || "—"}
+                          </p>
+                        </>
+                      ) : (
+                        "Staff"
+                      )}
+                    </td>
+                    <td className="p-4 text-slate-400">
+                      {p.department}
+                      <p className="text-[10px] mt-1">{p.semester}</p>
+                      {p.role === "student" && (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-indigo-200">
+                            {p.classes?.length || 0} classes
+                          </summary>
+                          <ul className="mt-2 space-y-2">
+                            {p.classes?.map((c) => (
+                              <li key={c.id}>
+                                {c.code} · {c.name}
+                                <span className="block text-[10px]">
+                                  {c.semester}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </td>
                     <td className="p-4">
                       <div className="flex gap-2 justify-end">
                         <button
@@ -264,7 +362,28 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                           <Pencil size={12} />
                           Edit
                         </button>
-                        {admin && p.role === 'faculty' && (
+                        {admin &&
+                          p.role === "faculty" &&
+                          (p.archivedAt ? (
+                            <button
+                              disabled={busy}
+                              className="p-button secondary small"
+                              onClick={() => void restore(p)}
+                            >
+                              <RotateCcw size={12} />
+                              Restore
+                            </button>
+                          ) : (
+                            <button
+                              disabled={busy}
+                              className="p-button ghost small text-red-300"
+                              aria-label={`Delete ${p.name}`}
+                              onClick={() => void removeFaculty(p)}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          ))}
+                        {admin && p.role === "faculty" && !p.archivedAt && (
                           <button
                             disabled={busy}
                             className="p-button secondary small"
@@ -285,7 +404,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
       )}
       {(adding || editing) && (
         <Dialog
-          title={adding ? 'Add faculty' : `Edit ${editing?.name}`}
+          title={adding ? "Add faculty" : `Edit ${editing?.name}`}
           onClose={() => {
             if (!busy) {
               setAdding(false);
@@ -327,10 +446,30 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                 }
               />
             </label>
-            {editing?.role === 'student' && (
+            {editing?.role === "student" && (
               <div className="field-grid">
                 <label className="field">
-                  USN / Roll number
+                  Class roll number
+                  <input
+                    maxLength={20}
+                    value={form.classRollNumber}
+                    onChange={(e) =>
+                      setForm({ ...form, classRollNumber: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  Section
+                  <input
+                    maxLength={30}
+                    value={form.section}
+                    onChange={(e) =>
+                      setForm({ ...form, section: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  University USN
                   <input
                     required
                     value={form.rollNumber}
@@ -360,10 +499,10 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
             )}
             <button type="submit" disabled={busy} className="p-button">
               {busy
-                ? 'Saving…'
+                ? "Saving…"
                 : adding
-                  ? 'Create faculty account'
-                  : 'Save details'}
+                  ? "Create faculty account"
+                  : "Save details"}
             </button>
           </form>
         </Dialog>
@@ -387,9 +526,9 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
             </div>
             <dl className="space-y-3">
               {[
-                ['Email', credentials.email],
-                ['Faculty ID', credentials.loginId],
-                ['Initial password', credentials.temporaryPassword],
+                ["Email", credentials.email],
+                ["Faculty ID", credentials.loginId],
+                ["Initial password", credentials.temporaryPassword],
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-[10px] text-slate-400 uppercase mb-1">
@@ -404,8 +543,8 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
             {credentials.confirmationSent !== undefined && (
               <p className="text-xs text-slate-400">
                 {credentials.confirmationSent
-                  ? 'A confirmation code was sent to the faculty inbox.'
-                  : 'The account was created, but the confirmation email could not be sent yet.'}
+                  ? "A confirmation code was sent to the faculty inbox."
+                  : "The account was created, but the confirmation email could not be sent yet."}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -418,22 +557,22 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                     );
                     setCopied(true);
                   } catch {
-                    setError('Select and copy the credentials manually.');
+                    setError("Select and copy the credentials manually.");
                   }
                 }}
               >
                 <Copy size={13} />
-                {copied ? 'Copied' : 'Copy credentials'}
+                {copied ? "Copied" : "Copy credentials"}
               </button>
               <button
                 className="p-button secondary small"
                 onClick={async () => {
                   const { error } = await supabase.auth.resend({
-                    type: 'signup',
+                    type: "signup",
                     email: credentials.email,
                   });
                   if (error) setError(error.message);
-                  else setError('Confirmation email sent.');
+                  else setError("Confirmation email sent.");
                 }}
               >
                 Resend confirmation

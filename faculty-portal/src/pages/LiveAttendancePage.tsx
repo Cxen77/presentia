@@ -50,7 +50,7 @@ export const LiveAttendancePage: React.FC = () => {
     if (!user) return;
     try {
     const classList = await attendanceDataService.getClasses(user.id);
-    setClasses(classList);
+    setClasses(classList.filter(c=>c.isActive));
     setSelectedClassId(previous=>previous || classList[0]?.id || '');
 
     const session = await attendanceDataService.getActiveSession(user.id);
@@ -375,7 +375,7 @@ export const LiveAttendancePage: React.FC = () => {
                             <div className="flex items-center gap-2">
                               <h3 className="text-base font-bold text-[#eef2f8]">{record.studentName}</h3>
                               <span className="font-mono text-xs text-[#b5bafa] bg-[#202c3e] px-2 py-0.5 rounded border border-[#273548]">
-                                {record.studentRollNumber}
+                                {record.studentRollNumber} · Roll {record.studentClassRollNumber || '—'} · Section {record.studentSection || '—'}
                               </span>
                             </div>
                             <p className="text-[11px] text-[#9aabc1] mt-0.5">

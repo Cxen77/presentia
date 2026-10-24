@@ -9,7 +9,7 @@ export function CreateClassPage() {
   const { user } = useAuth(); const navigate = useNavigate();
   const [step, setStep] = useState(1); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null);
   const [faculty,setFaculty]=useState<ManagedPerson[]>([]),[facultyId,setFacultyId]=useState('');
-  useEffect(()=>{if(user?.role==='admin')void getManagedPeople().then(people=>setFaculty(people.filter(p=>p.role==='faculty'))).catch(e=>setError(e.message));},[user?.role]);
+  useEffect(()=>{if(user?.role==='admin')void getManagedPeople().then(people=>setFaculty(people.filter(p=>p.role==='faculty'&&!p.archivedAt))).catch(e=>setError(e.message));},[user?.role]);
   const [form, setForm] = useState({ courseCode:'', className:'', department:user?.department || '', semester:'', room:'', startTime:'', endTime:'', classType:'Theory' as 'Theory'|'Practical'|'Seminar', credits:4, description:'' });
   const update = (key: keyof typeof form, value: string | number) => setForm(previous => ({ ...previous, [key]:value }));
   const submit = async (event: FormEvent<HTMLFormElement>) => {

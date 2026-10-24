@@ -224,13 +224,18 @@ export function isApiConfigured(): boolean {
 export { API_BASE_URL };
 
 export async function staffSignIn(identifier:string,password:string){const response=await fetch(API_BASE_URL+'/api/auth/staff-sign-in',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier,password})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Sign-in failed.');return data as {access_token:string;refresh_token:string};}
-export interface ManagedPerson{id:string;userId:string;name:string;email:string;loginId:string;department:string;semester:string;role:'admin'|'faculty'|'student';avatarUrl?:string;createdAt:string}
+export interface ManagedPerson{id:string;userId:string;name:string;email:string;loginId:string;department:string;semester:string;classRollNumber?:string;section?:string;archivedAt?:string|null;classes?:{id:string;name:string;code:string;semester:string}[];role:'admin'|'faculty'|'student';avatarUrl?:string;createdAt:string}
 export interface FacultyCredentials{email:string;loginId:string;temporaryPassword:string;confirmationSent?:boolean;requiresPasswordChange:boolean}
 export const getManagedPeople=()=>apiRequest<ManagedPerson[]>('/api/management/people');
 export const getManagedStudents=()=>apiRequest<ManagedPerson[]>('/api/management/students');
 export const saveStaffProfile=(data:{fullName:string;department:string})=>apiRequest('/api/management/me',{method:'PUT',body:data});
-export const saveManagedStudent=(id:string,data:{fullName:string;department:string;rollNumber:string;semester:string})=>apiRequest(`/api/management/students/${id}`,{method:'PUT',body:data});
+export const saveManagedStudent=(id:string,data:{fullName:string;department:string;rollNumber:string;semester:string;classRollNumber?:string;section?:string})=>apiRequest(`/api/management/students/${id}`,{method:'PUT',body:data});
 export const saveManagedFaculty=(id:string,data:{fullName:string;department:string})=>apiRequest(`/api/management/faculty/${id}`,{method:'PUT',body:data});
 export const createFacultyAccount=(data:{fullName:string;department:string;email:string})=>apiRequest<FacultyCredentials>('/api/management/faculty',{method:'POST',body:data});
 export const resetFacultyPassword=(id:string)=>apiRequest<FacultyCredentials>(`/api/management/faculty/${id}/reset-password`,{method:'POST'});
 export const changeInitialPassword=(password:string)=>apiRequest('/api/auth/initial-password',{method:'POST',body:{password}});
+
+export const deleteClass=(id:string)=>apiRequest(`/api/classes/${id}`,{method:'DELETE'});
+export const removeEnrollment=(classId:string,studentId:string)=>apiRequest(`/api/classes/${classId}/students/${studentId}`,{method:'DELETE'});
+export const deleteFaculty=(id:string)=>apiRequest(`/api/management/faculty/${id}`,{method:'DELETE'});
+export const restoreFaculty=(id:string)=>apiRequest(`/api/management/faculty/${id}/restore`,{method:'POST'});

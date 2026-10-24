@@ -38,7 +38,7 @@ export function EditClassDialog({
     if (user?.role === 'admin')
       void getManagedPeople()
         .then((people) =>
-          setFaculty(people.filter((p) => p.role === 'faculty')),
+          setFaculty(people.filter((p) => p.role === 'faculty' && !p.archivedAt)),
         )
         .catch((e) => setError(e.message));
   }, [user?.role]);

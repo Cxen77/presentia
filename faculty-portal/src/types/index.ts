@@ -15,7 +15,9 @@ export interface FacultyUser {
 export interface StudentProfile {
   id: string;
   fullName: string;
-  rollNumber: string; // USN or Roll Number
+  rollNumber: string; // University USN
+  classRollNumber?:string;
+  section?:string;
   email: string;
   degree: string;
   semester: string;
@@ -77,6 +79,8 @@ export interface AttendanceRecord {
   studentId: string;
   studentName: string;
   studentRollNumber: string;
+  studentClassRollNumber?:string;
+  studentSection?:string;
   studentAvatarUrl: string;
   verificationPhotoUrl: string;
   submittedAt: string;

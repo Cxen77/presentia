@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -7,9 +7,9 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+} from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
   BookOpen,
@@ -17,34 +17,34 @@ import {
   ChevronRight,
   Clock,
   QrCode,
-} from 'lucide-react-native';
-import { getClassCalendar, getMyEnrolledClasses } from '../services/api';
-import { useStudentQuery } from '../hooks/useStudentQuery';
+} from "lucide-react-native";
+import { getClassCalendar, getMyEnrolledClasses } from "../services/api";
+import { useStudentQuery } from "../hooks/useStudentQuery";
 import {
   classCardStatus,
   monthCells,
   summarizeDay,
-} from '../services/attendanceCalendar';
-import { StudentClassCard } from '../components/StudentClassCard';
-import { QRScannerModal, studentService, type StudentProfile } from '../../App';
+} from "../services/attendanceCalendar";
+import { StudentClassCard } from "../components/StudentClassCard";
+import { QRScannerModal, studentService, type StudentProfile } from "../../App";
 const colors: Record<string, string> = {
-  PRESENT: '#89c9a8',
-  ABSENT: '#e69ba3',
-  PENDING: '#dcc186',
-  OPEN: '#9cb9df',
-  MIXED: '#bfaff0',
-  NONE: '#5d728b',
+  PRESENT: "#89c9a8",
+  ABSENT: "#e69ba3",
+  PENDING: "#dcc186",
+  OPEN: "#9cb9df",
+  MIXED: "#bfaff0",
+  NONE: "#5d728b",
 };
 const labels: Record<string, string> = {
-  PRESENT: 'Present',
-  ABSENT: 'Absent',
-  PENDING: 'Awaiting review',
-  OPEN: 'Not submitted',
-  MIXED: 'Multiple outcomes',
-  NONE: 'No class session',
+  PRESENT: "Present",
+  ABSENT: "Absent",
+  PENDING: "Awaiting review",
+  OPEN: "Not submitted",
+  MIXED: "Multiple outcomes",
+  NONE: "No class session",
 };
 const dateKey = (year: number, month: number, day: number) =>
-  `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 export default function StudentClassDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -55,8 +55,8 @@ export default function StudentClassDetailScreen() {
   const [profile, setProfile] = useState<StudentProfile | null>(null),
     [scanner, setScanner] = useState(false),
     [scanError, setScanError] = useState<string | null>(null);
-  const classes = useStudentQuery('classes', getMyEnrolledClasses, [], 30000);
-  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+  const classes = useStudentQuery("classes", getMyEnrolledClasses, [], 30000);
+  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
   const loadCalendar = useCallback(
     () => getClassCalendar(id, monthKey),
     [id, monthKey],
@@ -69,8 +69,8 @@ export default function StudentClassDetailScreen() {
   const item = classes.data.find((c) => c.id === id);
   const selectedKey = dateKey(month.getFullYear(), month.getMonth(), selected);
   const selectedSessions = calendar.data.filter((s) => s.date === selectedKey);
-  const present = calendar.data.filter((s) => s.status === 'PRESENT').length,
-    absent = calendar.data.filter((s) => s.status === 'ABSENT').length;
+  const present = calendar.data.filter((s) => s.status === "PRESENT").length,
+    absent = calendar.data.filter((s) => s.status === "ABSENT").length;
   const today = new Date();
   const changeMonth = (delta: number) => {
     setMonth(
@@ -83,12 +83,12 @@ export default function StudentClassDetailScreen() {
     setScanError(null);
     try {
       const p = await studentService.getProfile();
-      if (!p) throw new Error('Complete your student profile first.');
+      if (!p) throw new Error("Complete your student profile first.");
       setProfile(p);
       setScanner(true);
     } catch (error) {
       setScanError(
-        error instanceof Error ? error.message : 'Could not open scanner.',
+        error instanceof Error ? error.message : "Could not open scanner.",
       );
     }
   };
@@ -105,7 +105,7 @@ export default function StudentClassDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel="Back to classes"
               onPress={() =>
-                router.canGoBack() ? router.back() : router.replace('/')
+                router.canGoBack() ? router.back() : router.replace("/")
               }
               style={s.back}
             >
@@ -114,7 +114,7 @@ export default function StudentClassDetailScreen() {
             <View style={{ flex: 1 }}>
               <Text style={s.eyebrow}>MY CLASS</Text>
               <Text style={s.topTitle}>
-                {item?.courseCode || 'Class details'}
+                {item?.courseCode || "Class details"}
               </Text>
             </View>
             <View style={s.miniIcon}>
@@ -137,11 +137,12 @@ export default function StudentClassDetailScreen() {
             ) : item ? (
               <>
                 <StudentClassCard
+                  expanded
                   item={{ ...item, status: classCardStatus(item) }}
                 />
                 <View style={s.classInfo}>
                   <Text style={s.infoText}>
-                    {item.teacherName || 'Faculty'} · {item.department}
+                    {item.teacherName || "Faculty"} · {item.department}
                   </Text>
                   <Text style={s.infoText}>
                     {item.credits} credits · {item.classType}
@@ -151,7 +152,7 @@ export default function StudentClassDetailScreen() {
             ) : (
               <Text accessibilityRole="alert" style={s.error}>
                 {classes.error ||
-                  'This class is unavailable or you are not enrolled.'}
+                  "This class is unavailable or you are not enrolled."}
               </Text>
             )}
             {item && (
@@ -164,8 +165,8 @@ export default function StudentClassDetailScreen() {
                   <View style={s.percent}>
                     <Text style={s.percentText}>
                       {present + absent
-                        ? Math.round((present / (present + absent)) * 100) + '%'
-                        : '—'}
+                        ? Math.round((present / (present + absent)) * 100) + "%"
+                        : "—"}
                     </Text>
                   </View>
                 </View>
@@ -181,8 +182,8 @@ export default function StudentClassDetailScreen() {
                     </TouchableOpacity>
                     <Text style={s.monthTitle}>
                       {month.toLocaleDateString(undefined, {
-                        month: 'long',
-                        year: 'numeric',
+                        month: "long",
+                        year: "numeric",
                       })}
                     </Text>
                     <TouchableOpacity
@@ -195,7 +196,7 @@ export default function StudentClassDetailScreen() {
                     </TouchableOpacity>
                   </View>
                   <View style={s.weekRow}>
-                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => (
+                    {["M", "T", "W", "T", "F", "S", "S"].map((day, i) => (
                       <Text key={i} style={s.weekday}>
                         {day}
                       </Text>
@@ -234,18 +235,18 @@ export default function StudentClassDetailScreen() {
                                   s.day,
                                   isToday && s.today,
                                   selected === day && s.selected,
-                                  status !== 'NONE' && {
-                                    backgroundColor: colors[status] + '20',
+                                  status !== "NONE" && {
+                                    backgroundColor: colors[status] + "20",
                                   },
                                 ]}
                               >
                                 <Text
                                   style={[
                                     s.dayNumber,
-                                    status !== 'NONE' && {
+                                    status !== "NONE" && {
                                       color: colors[status],
                                     },
-                                    selected === day && { fontWeight: '700' },
+                                    selected === day && { fontWeight: "700" },
                                   ]}
                                 >
                                   {day}
@@ -255,8 +256,8 @@ export default function StudentClassDetailScreen() {
                                     s.dayDot,
                                     {
                                       backgroundColor:
-                                        status === 'NONE'
-                                          ? 'transparent'
+                                        status === "NONE"
+                                          ? "transparent"
                                           : colors[status],
                                     },
                                   ]}
@@ -270,9 +271,9 @@ export default function StudentClassDetailScreen() {
                   </View>
                   <View style={s.legend}>
                     {[
-                      ['PRESENT', 'Present'],
-                      ['ABSENT', 'Absent'],
-                      ['PENDING', 'Pending'],
+                      ["PRESENT", "Present"],
+                      ["ABSENT", "Absent"],
+                      ["PENDING", "Pending"],
                     ].map(([status, label]) => (
                       <View key={status} style={s.legendItem}>
                         <View
@@ -288,7 +289,7 @@ export default function StudentClassDetailScreen() {
                 </View>
                 {calendar.error && (
                   <Text accessibilityRole="alert" style={s.error}>
-                    {calendar.updatedAt ? 'Saved calendar · ' : ''}
+                    {calendar.updatedAt ? "Saved calendar · " : ""}
                     {calendar.error}
                   </Text>
                 )}
@@ -310,7 +311,7 @@ export default function StudentClassDetailScreen() {
                   <View style={s.summaryItem}>
                     <Text style={s.summaryNumber}>
                       {
-                        calendar.data.filter((e) => e.status === 'PENDING')
+                        calendar.data.filter((e) => e.status === "PENDING")
                           .length
                       }
                     </Text>
@@ -324,9 +325,9 @@ export default function StudentClassDetailScreen() {
                       month.getMonth(),
                       selected,
                     ).toLocaleDateString(undefined, {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'short',
+                      weekday: "long",
+                      day: "numeric",
+                      month: "short",
                     })}
                   </Text>
                   {calendar.loading ? (
@@ -338,8 +339,8 @@ export default function StudentClassDetailScreen() {
                           <View style={s.sessionTime}>
                             <Clock size={12} color="#93a9c7" />
                             <Text style={s.sessionTimeText}>
-                              {session.startTime || 'Class session'}
-                              {session.endTime ? ' – ' + session.endTime : ''}
+                              {session.startTime || "Class session"}
+                              {session.endTime ? " – " + session.endTime : ""}
                             </Text>
                           </View>
                           <Text
@@ -366,7 +367,7 @@ export default function StudentClassDetailScreen() {
                   Only held sessions count. Pending reviews and days without a
                   session are excluded from the percentage.
                 </Text>
-                {item.sessionStatus === 'ACTIVE' && !item.attendanceStatus && (
+                {item.sessionStatus === "ACTIVE" && !item.attendanceStatus && (
                   <TouchableOpacity
                     accessibilityRole="button"
                     onPress={() => void scan()}
@@ -402,183 +403,183 @@ export default function StudentClassDetailScreen() {
   );
 }
 const s = StyleSheet.create({
-  background: { flex: 1, backgroundColor: '#040d16', alignItems: 'center' },
+  background: { flex: 1, backgroundColor: "#040d16", alignItems: "center" },
   viewport: {
     flex: 1,
-    width: '100%',
+    width: "100%",
     maxWidth: 430,
-    backgroundColor: '#061522',
+    backgroundColor: "#061522",
   },
   topbar: {
     paddingHorizontal: 22,
     paddingTop: 12,
     paddingBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 13,
   },
   back: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#13283d',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#13283d",
+    alignItems: "center",
+    justifyContent: "center",
   },
   eyebrow: {
     fontSize: 8,
-    color: '#768fae',
+    color: "#768fae",
     letterSpacing: 1.8,
-    fontWeight: '700',
+    fontWeight: "700",
   },
-  topTitle: { fontSize: 15, color: '#e4edfb', fontWeight: '600', marginTop: 3 },
+  topTitle: { fontSize: 15, color: "#e4edfb", fontWeight: "600", marginTop: 3 },
   miniIcon: {
     width: 33,
     height: 33,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: '#274059',
+    borderColor: "#274059",
   },
-  content: { padding: 22, paddingTop: 4, paddingBottom: 40 },
+  content: { padding: 18, paddingTop: 4, paddingBottom: 30 },
   classInfo: { padding: 4, gap: 5, marginTop: 12 },
-  infoText: { fontSize: 11, color: '#8ea5c2', lineHeight: 17 },
+  infoText: { fontSize: 11, color: "#8ea5c2", lineHeight: 17 },
   sectionHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 27,
-    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 20,
+    marginBottom: 10,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#e5edfa',
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#e5edfa",
     letterSpacing: -0.4,
   },
-  subtitle: { fontSize: 11, color: '#7e97b6', marginTop: 4 },
+  subtitle: { fontSize: 11, color: "#7e97b6", marginTop: 4 },
   percent: {
     paddingHorizontal: 11,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: '#29475a',
+    borderColor: "#29475a",
     borderRadius: 12,
-    backgroundColor: '#112d35',
+    backgroundColor: "#112d35",
   },
-  percentText: { color: '#98cdb5', fontSize: 13, fontWeight: '600' },
+  percentText: { color: "#98cdb5", fontSize: 13, fontWeight: "600" },
   calendar: {
-    backgroundColor: '#102235',
+    backgroundColor: "#102235",
     borderWidth: 1,
-    borderColor: '#253d55',
-    borderRadius: 21,
-    padding: 15,
+    borderColor: "#253d55",
+    borderRadius: 17,
+    padding: 10,
   },
   monthBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 9,
   },
   monthArrow: {
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: '#1a3048',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#1a3048",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  monthTitle: { color: '#dbe7f8', fontSize: 14, fontWeight: '600' },
-  weekRow: { flexDirection: 'row', marginBottom: 8 },
+  monthTitle: { color: "#dbe7f8", fontSize: 14, fontWeight: "600" },
+  weekRow: { flexDirection: "row", marginBottom: 8 },
   weekday: {
-    width: '14.2857%',
-    textAlign: 'center',
+    width: "14.2857%",
+    textAlign: "center",
     fontSize: 9,
-    fontWeight: '600',
-    color: '#6f87a5',
+    fontWeight: "600",
+    color: "#6f87a5",
   },
-  days: { flexDirection: 'row', flexWrap: 'wrap' },
+  days: { flexDirection: "row", flexWrap: "wrap" },
   dayCell: {
-    width: '14.2857%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: "14.2857%",
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
   },
   day: {
-    width: '89%',
-    height: '89%',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
-  today: { borderColor: '#436480' },
-  selected: { borderColor: '#9db5d5' },
-  dayNumber: { fontSize: 12, color: '#9fb1cb' },
+  today: { borderColor: "#436480" },
+  selected: { borderColor: "#9db5d5" },
+  dayNumber: { fontSize: 12, color: "#9fb1cb" },
   dayDot: { width: 3, height: 3, borderRadius: 2, marginTop: 4 },
   legend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     gap: 20,
-    paddingTop: 15,
-    marginTop: 8,
+    paddingTop: 9,
+    marginTop: 5,
     borderTopWidth: 1,
-    borderTopColor: '#22394f',
+    borderTopColor: "#22394f",
   },
-  legendItem: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  legendItem: { flexDirection: "row", gap: 5, alignItems: "center" },
   legendDot: { width: 5, height: 5, borderRadius: 3 },
-  legendText: { fontSize: 9, color: '#8fa6c4' },
+  legendText: { fontSize: 9, color: "#8fa6c4" },
   summary: {
-    flexDirection: 'row',
-    paddingVertical: 17,
-    marginTop: 12,
-    alignItems: 'center',
+    flexDirection: "row",
+    paddingVertical: 12,
+    marginTop: 5,
+    alignItems: "center",
   },
-  summaryItem: { flex: 1, alignItems: 'center', gap: 4 },
-  summaryNumber: { fontSize: 21, fontWeight: '600', color: '#d9c38e' },
-  summaryLabel: { fontSize: 10, color: '#7f98b6' },
-  summaryDivider: { width: 1, height: 26, backgroundColor: '#263d54' },
+  summaryItem: { flex: 1, alignItems: "center", gap: 4 },
+  summaryNumber: { fontSize: 18, fontWeight: "600", color: "#d9c38e" },
+  summaryLabel: { fontSize: 10, color: "#7f98b6" },
+  summaryDivider: { width: 1, height: 26, backgroundColor: "#263d54" },
   dayDetail: {
     padding: 16,
     borderRadius: 16,
-    backgroundColor: '#102235',
+    backgroundColor: "#102235",
     borderWidth: 1,
-    borderColor: '#263c54',
+    borderColor: "#263c54",
   },
   detailDate: {
     fontSize: 12,
-    color: '#bed0e9',
-    fontWeight: '600',
+    color: "#bed0e9",
+    fontWeight: "600",
     marginBottom: 10,
   },
   session: {
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#243b52',
+    borderTopColor: "#243b52",
   },
   sessionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
   },
-  sessionTime: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 },
-  sessionTimeText: { fontSize: 10, color: '#91a8c5', flexShrink: 1 },
-  sessionStatus: { fontSize: 10, fontWeight: '600' },
-  reason: { fontSize: 11, color: '#cf9ea7', lineHeight: 17, marginTop: 9 },
-  empty: { fontSize: 11, color: '#7991af', lineHeight: 18 },
-  footnote: { fontSize: 9, lineHeight: 15, color: '#657f9e', marginTop: 13 },
+  sessionTime: { flexDirection: "row", alignItems: "center", gap: 5, flex: 1 },
+  sessionTimeText: { fontSize: 10, color: "#91a8c5", flexShrink: 1 },
+  sessionStatus: { fontSize: 10, fontWeight: "600" },
+  reason: { fontSize: 11, color: "#cf9ea7", lineHeight: 17, marginTop: 9 },
+  empty: { fontSize: 11, color: "#7991af", lineHeight: 18 },
+  footnote: { fontSize: 9, lineHeight: 15, color: "#657f9e", marginTop: 13 },
   scan: {
-    backgroundColor: '#bfd1eb',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#bfd1eb",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 9,
     padding: 14,
     borderRadius: 13,
     marginTop: 20,
   },
-  scanText: { fontSize: 12, fontWeight: '700', color: '#102438' },
-  error: { fontSize: 12, color: '#efadb3', lineHeight: 19, marginTop: 12 },
+  scanText: { fontSize: 12, fontWeight: "700", color: "#102438" },
+  error: { fontSize: 12, color: "#efadb3", lineHeight: 19, marginTop: 12 },
 });

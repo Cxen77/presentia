@@ -47,7 +47,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // Load the user's application profile and role
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id, full_name, email, role')
+      .select('id, full_name, email, role, archived_at')
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -60,6 +60,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       return res.status(500).json({ error: 'Failed to load user profile' });
     }
+
+    if(profile?.archived_at)return res.status(403).json({error:'Your staff account has been deleted. Contact the administrator to restore access.'});
 
     // User may be authenticated but not yet have a profile (first login)
     req.user = {

@@ -79,10 +79,10 @@ router.post('/staff-sign-in', async (req, res) => {
     }
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('role')
+      .select('role,archived_at')
       .eq('user_id', session.user.id)
       .single();
-    if (!profile || !['faculty', 'admin'].includes(profile.role))
+    if (!profile || profile.archived_at || !['faculty', 'admin'].includes(profile.role))
       return res
         .status(403)
         .json({ error: 'This account does not have portal access.' });

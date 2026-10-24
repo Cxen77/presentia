@@ -16,7 +16,7 @@ export function DashboardPage() {
     if (!user) return;
     try {
       const [list, active] = await Promise.all([attendanceDataService.getClasses(user.id), attendanceDataService.getActiveSession(user.id)]);
-      setClasses(list); setSession(active); setError(null);
+      setClasses(list.filter(c=>c.isActive)); setSession(active); setError(null);
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load your workspace.'); }
     finally { setLoading(false); }
   }, [user]);

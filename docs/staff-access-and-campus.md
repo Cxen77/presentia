@@ -1,12 +1,16 @@
 # Staff access and campus attendance
 
-Apply the existing schema/security setup, then `migration_002_geofence.sql` and `migration_003_single_admin.sql` in order. Keep RLS enabled. The new migrations add location evidence, class campus settings, a single-admin constraint, and login IDs for legacy faculty. They do not give authenticated clients permission to modify roles.
+Apply the existing schema/security setup, then migrations `002`, `003`, and `004` in order. Keep RLS enabled. They add location evidence, class campus settings, a single-admin constraint, staff IDs, student class roll/section, and reversible deletion fields. They do not give authenticated clients permission to modify roles or account deletion flags.
 
 Provision the first administrator with a trusted server-side Supabase admin client. Create its real Auth account with email confirmation required and `app_metadata.must_change_password = true`, then create its `profiles` row with `role = 'admin'` and a unique staff login ID. Never put the Supabase secret in a frontend bundle. No public admin-registration endpoint exists. The unique partial index prevents a second admin profile.
 
 New staff use **Verify email / enter confirmation code** on the portal login page. Supabase sends the signup code using the project's configured Brevo SMTP provider. After verification, the portal requires a new password. Backend middleware denies all protected endpoints except profile lookup and initial password setup while the trusted Auth flag is set. Ordinary email/password and Google sign-in continue to use the same Supabase project.
 
 The administrator can view accounts, add faculty, edit faculty and student details, assign/edit classes, and view reports. Creating or resetting a faculty account displays a cryptographically generated initial password once; the recipient must set their own password. Faculty can manage only their own classes and students actively enrolled in them. Role and email are not accepted by detail-edit endpoints. Passwords are never stored in profiles.
+
+Students can enter class roll number and section during setup or profile editing. These are separate from the unique university USN. Portal rosters, review queues, and Excel exports sort rolls naturally (2 before 10), with USN fallback. Student management shows expandable class memberships; the class roster can filter by section.
+
+Delete actions require confirmation in the portal. Classes become inactive and can be restored from Deleted / inactive classes. Enrollment removal sets a dropped status and end time; historical session exports retain the student. Faculty deletion is admin-only, requires reassignment/deletion of active classes, and disables access without deleting historical ownership. The admin can restore deleted faculty. Active attendance sessions block class deletion and enrollment removal. Archived faculty are blocked by backend middleware and restrictive Supabase RLS, including pre-existing sessions. Authenticated clients cannot modify the archived flag. No hard-delete endpoint is exposed.
 
 ## Attendance and calendar
 

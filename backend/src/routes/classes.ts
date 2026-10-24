@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
+import { compareRoster } from '../services/roster';
 import { geofenceSchema } from '../services/geofence';
 
 const router = Router();
@@ -140,7 +141,7 @@ router.post('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) 
   const d = parsed.data;
   const ownerId=user.role==='admin'?d.facultyId:user.profileId;
   if(!ownerId)return res.status(400).json({error:'Assign this class to a faculty account.'});
-  const {data:owner}=await supabaseAdmin.from('profiles').select('id,full_name,role').eq('id',ownerId).eq('role','faculty').maybeSingle();
+  const {data:owner}=await supabaseAdmin.from('profiles').select('id,full_name,role').eq('id',ownerId).eq('role','faculty').is('archived_at',null).maybeSingle();
   if(!owner)return res.status(400).json({error:'Choose a valid faculty account.'});
   const randomSuffix = crypto.randomInt(1000, 9999);
   const cleanPrefix = d.courseCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -229,6 +230,8 @@ router.get('/:id/students', requireAuth, requireRole('faculty', 'admin'), async 
         full_name,
         first_name,
         roll_number,
+        class_roll_number,
+        section,
         email,
         degree,
         semester,
@@ -245,10 +248,13 @@ router.get('/:id/students', requireAuth, requireRole('faculty', 'admin'), async 
 
   const students = (enrollments || [])
     .filter((e: any) => e.student)
+    .sort((a:any,b:any)=>compareRoster(a.student,b.student))
     .map((e: any) => ({
       id: e.student.id,
       fullName: e.student.full_name,
       rollNumber: e.student.roll_number,
+      classRollNumber:e.student.class_roll_number || '',
+      section:e.student.section || '',
       email: e.student.email,
       degree: e.student.degree,
       semester: e.student.semester,
@@ -303,9 +309,10 @@ router.put('/:id',requireAuth,requireRole('faculty','admin'),async(req,res)=>{
   const {data:current}=await supabaseAdmin.from('classes').select('*').eq('id',req.params.id).single();if(!current)return res.status(404).json({error:'Class not found.'});
   if(user.role!=='admin'&&current.faculty_id!==user.profileId)return res.status(403).json({error:'You do not manage this class.'});
   const d=parsed.data;if(user.role!=='admin'&&d.facultyId&&d.facultyId!==user.profileId)return res.status(403).json({error:'Only the administrator can reassign faculty.'});
+  if(d.isActive===true){const {data:owner}=await supabaseAdmin.from('profiles').select('id').eq('id',d.facultyId||current.faculty_id).is('archived_at',null).eq('role','faculty').maybeSingle();if(!owner)return res.status(409).json({error:'Assign an active faculty member before restoring this class.'});}
   const fields:Record<string,string>={courseCode:'course_code',className:'class_name',department:'department',semester:'semester',room:'room',startTime:'start_time',endTime:'end_time',classType:'class_type',credits:'credits',description:'description',isActive:'is_active'};
   const update:Record<string,unknown>={};for(const [key,column]of Object.entries(fields))if((d as any)[key]!==undefined)update[column]=(d as any)[key];
-  if(d.facultyId){const {data:faculty}=await supabaseAdmin.from('profiles').select('full_name').eq('id',d.facultyId).eq('role','faculty').maybeSingle();if(!faculty)return res.status(400).json({error:'Choose a valid faculty account.'});update.faculty_id=d.facultyId;update.teacher_name=faculty.full_name;}
+  if(d.facultyId){const {data:faculty}=await supabaseAdmin.from('profiles').select('full_name').eq('id',d.facultyId).eq('role','faculty').is('archived_at',null).maybeSingle();if(!faculty)return res.status(400).json({error:'Choose a valid faculty account.'});update.faculty_id=d.facultyId;update.teacher_name=faculty.full_name;}
   const start=d.startTime||current.start_time,end=d.endTime||current.end_time;if(start&&end&&end<=start)return res.status(400).json({error:'End time must be later than start time.'});
   update.schedule_info=`${start||''} - ${end||''}`;
   const {error}=await supabaseAdmin.from('classes').update(update).eq('id',req.params.id);if(error)return res.status(500).json({error:'Could not save class details.'});return res.json({success:true});
@@ -321,5 +328,28 @@ router.put('/:id/geofence',requireAuth,requireRole('faculty','admin'),async(req,
   const {error}=await supabaseAdmin.from('classes').update({geofence:parsed.data}).eq('id',req.params.id);
   if(error)return res.status(500).json({error:'Could not save campus check-in rules.'});
   return res.json(parsed.data);
+});
+router.delete('/:id',requireAuth,requireRole('faculty','admin'),async(req,res)=>{
+  const {data:cls}=await supabaseAdmin.from('classes').select('id,faculty_id').eq('id',req.params.id).maybeSingle();
+  if(!cls)return res.status(404).json({error:'Class not found.'});
+  if(req.user!.role!=='admin'&&cls.faculty_id!==req.user!.profileId)return res.status(403).json({error:'You do not manage this class.'});
+  const {data:active,error:sessionError}=await supabaseAdmin.from('attendance_sessions').select('id').eq('class_id',cls.id).eq('status','ACTIVE').limit(1);
+  if(sessionError)return res.status(500).json({error:'Could not check active sessions.'});
+  if(active?.length)return res.status(409).json({error:'End the active attendance session before deleting this class.'});
+  const {error}=await supabaseAdmin.from('classes').update({is_active:false}).eq('id',cls.id);
+  if(error)return res.status(500).json({error:'Could not delete class.'});
+  return res.json({success:true,archived:true});
+});
+router.delete('/:id/students/:studentId',requireAuth,requireRole('faculty','admin'),async(req,res)=>{
+  const {data:cls}=await supabaseAdmin.from('classes').select('faculty_id').eq('id',req.params.id).maybeSingle();
+  if(!cls)return res.status(404).json({error:'Class not found.'});
+  if(req.user!.role!=='admin'&&cls.faculty_id!==req.user!.profileId)return res.status(403).json({error:'You do not manage this class.'});
+  const {data:live,error:liveError}=await supabaseAdmin.from('attendance_sessions').select('id').eq('class_id',req.params.id).eq('status','ACTIVE').limit(1);
+  if(liveError)return res.status(500).json({error:'Could not check attendance sessions.'});
+  if(live?.length)return res.status(409).json({error:'End the active session before removing students.'});
+  const {data,error}=await supabaseAdmin.from('class_enrollments').update({status:'dropped',ended_at:new Date().toISOString()}).eq('class_id',req.params.id).eq('student_id',req.params.studentId).eq('status','active').select('id').maybeSingle();
+  if(error)return res.status(500).json({error:'Could not remove enrollment.'});
+  if(!data)return res.status(404).json({error:'Active enrollment not found.'});
+  return res.json({success:true});
 });
 export default router;

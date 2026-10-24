@@ -141,6 +141,8 @@ export interface StudentProfile {
   firstName: string;
   degree: string;
   rollNumber: string;
+  classRollNumber?: string;
+  section?: string;
   semester: string;
   avatarUrl: string;
   attendancePercent: number;
@@ -244,6 +246,8 @@ class StudentService {
       firstName: data.first_name || data.full_name.split(' ')[0],
       degree: data.degree || 'Computer Science',
       rollNumber: data.roll_number,
+      classRollNumber: data.class_roll_number || '',
+      section: data.section || '',
       semester: data.semester || '3rd Semester',
       avatarUrl: data.avatar_url || '',
       attendancePercent: 0,
@@ -257,6 +261,8 @@ class StudentService {
   async saveProfile(profileData: {
     fullName: string;
     rollNumber: string;
+    classRollNumber?: string;
+    section?: string;
     department: string;
     semester: string;
     avatarUrl?: string;
@@ -279,6 +285,8 @@ class StudentService {
             first_name: profileData.fullName.trim().split(' ')[0],
             roll_number: profileData.rollNumber.trim().toUpperCase(),
             degree: profileData.department.trim(),
+            ...(profileData.classRollNumber !== undefined ? {class_roll_number:profileData.classRollNumber.trim()}:{}),
+            ...(profileData.section !== undefined ? {section:profileData.section.trim().toUpperCase()}:{}),
             semester: profileData.semester.trim(),
             avatar_url: profileData.avatarUrl || null,
             updated_at: new Date().toISOString(),
@@ -305,6 +313,8 @@ class StudentService {
         firstName: data.first_name,
         degree: data.degree,
         rollNumber: data.roll_number,
+      classRollNumber: data.class_roll_number || '',
+      section: data.section || '',
         semester: data.semester,
         avatarUrl: data.avatar_url || '',
         attendancePercent: 0,
@@ -1439,6 +1449,7 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState('');
   const [usn, setUsn] = useState('');
+  const [classRollNumber,setClassRollNumber]=useState(''),[section,setSection]=useState('');
   const [department, setDepartment] = useState('Computer Science');
   const [semester, setSemester] = useState('3rd');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -1517,6 +1528,7 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
       const result = await studentService.saveProfile({
         fullName: fullName.trim(),
         rollNumber: usn.trim().toUpperCase(),
+        classRollNumber,section,
         department: department.trim(),
         semester: `${semester} Semester`,
         avatarUrl: photoUri || '',
@@ -1617,7 +1629,7 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
 
           {step === 3 && (
             <View style={styles.underlineGroup}>
-              <Text style={styles.underlineLabel}>USN / ROLL NUMBER</Text>
+              <Text style={styles.underlineLabel}>UNIVERSITY USN</Text>
               <TextInput
                 style={[styles.underlineInput, { letterSpacing: 1.5, color: '#B4CBF5' }]}
                 value={usn}
@@ -1630,6 +1642,10 @@ export const ProfileSetupScreen: React.FC<{ initialEmail?: string; onComplete: (
                 onSubmitEditing={goNext}
               />
               <View style={[styles.underlineBar, usn.length > 0 && styles.underlineActive]} />
+              <View style={{flexDirection:'row',gap:14,marginTop:20}}>
+                <View style={{flex:1}}><Text style={styles.underlineLabel}>CLASS ROLL NO.</Text><TextInput accessibilityLabel="Class roll number" style={[styles.underlineInput,{fontSize:18}]} value={classRollNumber} onChangeText={setClassRollNumber} maxLength={20} placeholder="e.g. 12" placeholderTextColor="#3E5E7E"/></View>
+                <View style={{flex:1}}><Text style={styles.underlineLabel}>SECTION</Text><TextInput accessibilityLabel="Section" style={[styles.underlineInput,{fontSize:18}]} value={section} onChangeText={setSection} maxLength={30} autoCapitalize="characters" placeholder="e.g. A" placeholderTextColor="#3E5E7E"/></View>
+              </View>
             </View>
           )}
 
@@ -1901,6 +1917,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
   const [editMode, setEditMode] = useState(false);
   const [editName, setEditName] = useState('');
   const [editRoll, setEditRoll] = useState('');
+  const [editClassRoll,setEditClassRoll]=useState(''),[editSection,setEditSection]=useState('');
   const [editDept, setEditDept] = useState('');
   const [editSem, setEditSem] = useState('');
   const [saving, setSaving] = useState(false);
@@ -1912,6 +1929,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
       if (p) {
         setEditName(p.name || '');
         setEditRoll(p.rollNumber || '');
+        setEditClassRoll(p.classRollNumber || '');setEditSection(p.section || '');
         setEditDept(p.degree || '');
         setEditSem(p.semester || '');
       }
@@ -1972,6 +1990,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
       const result = await studentService.saveProfile({
         fullName: editName.trim(),
         rollNumber: editRoll.trim(),
+        classRollNumber:editClassRoll,section:editSection,
         department: editDept.trim() || 'Computer Science',
         semester: editSem.trim() || '3rd',
         avatarUrl: student?.avatarUrl,
@@ -1980,6 +1999,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
         setStudent(result.profile);
         setEditName(result.profile.name);
         setEditRoll(result.profile.rollNumber);
+        setEditClassRoll(result.profile.classRollNumber || '');setEditSection(result.profile.section || '');
         setEditDept(result.profile.degree);
         setEditSem(result.profile.semester);
         setFeedback({ type: 'success', message: 'Profile saved successfully!' });
@@ -1997,6 +2017,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
     if (student) {
       setEditName(student.name || '');
       setEditRoll(student.rollNumber || '');
+      setEditClassRoll(student.classRollNumber || '');setEditSection(student.section || '');
       setEditDept(student.degree || '');
       setEditSem(student.semester || '');
     }
@@ -2074,7 +2095,7 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
 
           <View style={{ flex: 1, marginLeft: 16 }}>
             <Text style={styles.profileNameText}>{profile.name}</Text>
-            <Text style={styles.profileRollText}>{profile.rollNumber} • {profile.degree}</Text>
+            <Text style={styles.profileRollText}>{profile.rollNumber} • {profile.degree}</Text><Text style={[styles.profileRollText,{marginTop:5,fontSize:11}]}>Roll {profile.classRollNumber || '—'} · Section {profile.section || '—'}</Text>
             <View style={styles.profileBadge}>
               <Text style={styles.profileBadgeText}>{profile.semester}</Text>
             </View>
@@ -2108,6 +2129,10 @@ export const ProfileScreen: React.FC<{ onLogout: () => void; onNavigateTab:(tab:
                   placeholderTextColor="#5A6F84"
                   autoCapitalize="characters"
                 />
+              </View>
+              <View style={[styles.profileMenuItem,styles.profileMenuItemBorder,{gap:12}]}>
+                <View style={{flex:1}}><Text style={{fontSize:11,color:'#7F94B0',marginBottom:6}}>CLASS ROLL NO.</Text><TextInput accessibilityLabel="Class roll number" value={editClassRoll} onChangeText={setEditClassRoll} maxLength={20} placeholder="e.g. 12" placeholderTextColor="#5A6F84" style={{color:'#fff',fontSize:14,paddingVertical:8}}/></View>
+                <View style={{flex:1}}><Text style={{fontSize:11,color:'#7F94B0',marginBottom:6}}>SECTION</Text><TextInput accessibilityLabel="Section" value={editSection} onChangeText={setEditSection} maxLength={30} autoCapitalize="characters" placeholder="e.g. A" placeholderTextColor="#5A6F84" style={{color:'#fff',fontSize:14,paddingVertical:8}}/></View>
               </View>
               {/* Department */}
               <View style={[styles.profileMenuItem, styles.profileMenuItemBorder, { flexDirection: 'column', alignItems: 'flex-start' }]}>

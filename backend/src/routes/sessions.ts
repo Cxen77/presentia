@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import {compareRoster} from '../services/roster';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -371,6 +372,8 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
         id,
         full_name,
         roll_number,
+        class_roll_number,
+        section,
         avatar_url,
         email,
         degree,
@@ -384,13 +387,15 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     return res.status(500).json({ error: error.message });
   }
 
-  const formatted = (records || []).map((r: any) => ({
+  const formatted = (records || []).sort((a:any,b:any)=>compareRoster(a.student||{},b.student||{})).map((r: any) => ({
     id: r.id,
     sessionId: r.session_id,
     classId: r.class_id,
     studentId: r.student?.id || r.student_id,
     studentName: r.student?.full_name || '',
     studentRollNumber: r.student?.roll_number || '',
+    studentClassRollNumber:r.student?.class_roll_number || '',
+    studentSection:r.student?.section || '',
     studentAvatarUrl: r.student?.avatar_url || '',
     verificationPhotoUrl: attendancePhotoDeliveryUrl(r.verification_photo_url),
     submittedAt: r.submitted_at,

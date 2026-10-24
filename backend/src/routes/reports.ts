@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import ExcelJS from 'exceljs';
+import {compareRoster} from '../services/roster';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
@@ -46,17 +47,19 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('class_enrollments')
     .select(`
+      enrolled_at, ended_at, status,
       student:student_id (
-        id, full_name, roll_number, email, degree, semester, avatar_url
+        id, full_name, roll_number, class_roll_number, section, email, degree, semester, avatar_url
       )
     `)
     .eq('class_id', session.class_id)
-    .eq('status', 'active');
+    .lte('enrolled_at',session.created_at)
+    .or(`ended_at.is.null,ended_at.gte.${session.created_at}`);
   if (enrollmentError) return res.status(500).json({error:'Could not load the class roster. Please retry.'});
 
   const students = (enrollments || [])
     .filter((e: any) => e.student)
-    .map((e: any) => e.student);
+    .map((e: any) => e.student).sort(compareRoster);
 
   // 4. Load attendance records for this session
   const { data: records, error: recordError } = await supabaseAdmin
@@ -136,7 +139,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
 
   // Table header
   const headerRow = worksheet.addRow([
-    'Sl. No', 'Student Name', 'USN / Roll Number', 'Degree & Semester',
+    'Sl. No', 'Student Name', 'USN / Roll Number', 'Degree / Semester / Section / Roll',
     'Attendance Status', 'Verification Time', 'Verifier / Remarks',
   ]);
   headerRow.height = 26;
@@ -170,7 +173,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
       index + 1,
       item.student.full_name,
       item.student.roll_number,
-      `${item.student.degree || ''} (${(item.student.semester || '').split(' ')[0]})`,
+      `${item.student.degree || ''} (${(item.student.semester || '').split(' ')[0]})${item.student.section ? ' · Sec '+item.student.section : ''}${item.student.class_roll_number ? ' · Roll '+item.student.class_roll_number : ''}`,
       item.status,
       formattedTime,
       remarks,
