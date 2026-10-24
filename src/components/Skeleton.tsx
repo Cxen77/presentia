@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View, type ViewStyle } from 'react-native';
 
 /** Quiet pulsing placeholder block; compose into card-shaped skeletons. */
 export function SkeletonBlock({ width, height, radius = 10, style }: {
   width: number | `${number}%`; height: number; radius?: number; style?: ViewStyle;
 }) {
-  const pulse = useRef(new Animated.Value(0.45)).current;
+  const [pulse] = useState(() => new Animated.Value(0.45));
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(pulse, { toValue: 0.9, duration: 800, useNativeDriver: true }),

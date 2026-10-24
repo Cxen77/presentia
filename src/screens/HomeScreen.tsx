@@ -50,9 +50,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [profileDetailVisible, setProfileDetailVisible] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      const profile = await studentService.getProfile();
+  const loadData = useCallback(() => {
+    return studentService.getProfile().then(async profile => {
       if (!profile) {
         setStudent(null);
         setClasses([]);
@@ -63,14 +62,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
       const enrolled = await studentService.getEnrolledClasses(profile.id);
       setClasses(enrolled);
       setLoadError(null);
-    } catch (err) {
+    }).catch(err => {
       console.error('Error loading home data:', err);
       setStudent(null);
       setClasses([]);
       setLoadError(err instanceof Error ? err.message : 'Unable to load your class dashboard.');
-    } finally {
+    }).finally(() => {
       setLoading(false);
-    }
+    });
   }, []);
 
   useEffect(() => {
@@ -112,7 +111,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout, onNavigateTab 
           <View style={styles.greetingCol}>
             <Text style={styles.helloText}>Hello,</Text>
             <Text style={styles.studentFirstName}>{currentStudent.firstName}</Text>
-            <Text style={styles.supportingGreeting}>Let's make today count</Text>
+            <Text style={styles.supportingGreeting}>Let&apos;s make today count</Text>
           </View>
 
           <View style={styles.headerActionsRow}>

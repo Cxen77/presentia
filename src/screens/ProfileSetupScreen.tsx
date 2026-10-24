@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -58,10 +58,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
   const [saving, setSaving] = useState(false);
   const [setupError, setSetupError] = useState('');
 
-  // Animation refs
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(1 / TOTAL_STEPS)).current;
+  // Stable animation values can be bound to styles without reading refs in render.
+  const [fadeAnim] = useState(() => new Animated.Value(1));
+  const [slideAnim] = useState(() => new Animated.Value(0));
+  const [progressAnim] = useState(() => new Animated.Value(1 / TOTAL_STEPS));
 
   const departments = [
     'Computer Science',
@@ -82,7 +82,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
       duration: 350,
       useNativeDriver: false,
     }).start();
-  }, [step]);
+  }, [step, progressAnim]);
 
   const animateTransition = (direction: 'forward' | 'back', callback: () => void) => {
     const exitValue = direction === 'forward' ? -30 : 30;

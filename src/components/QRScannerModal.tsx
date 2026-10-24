@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -33,7 +33,10 @@ interface QRScannerModalProps {
   onClassEnrolled: () => void;
 }
 
-export const QRScannerModal: React.FC<QRScannerModalProps> = ({
+export const QRScannerModal: React.FC<QRScannerModalProps> = (props) =>
+  props.visible ? <QRScannerContent {...props} /> : null;
+
+const QRScannerContent: React.FC<QRScannerModalProps> = ({
   visible,
   studentProfileId,
   onClose,
@@ -48,17 +51,6 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const [detectedClass, setDetectedClass] = useState<DatabaseClass | null>(null);
   const [attendanceNotice, setAttendanceNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (visible) {
-      setScanned(false);
-      setValidating(false);
-      setEnrolling(false);
-      setDetectedClass(null);
-      setAttendanceNotice(null);
-      setErrorMessage(null);
-    }
-  }, [visible]);
 
   const handleBarcodeScanned = async (data: string) => {
     if (scanned || validating || enrolling) return;

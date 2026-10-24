@@ -9,6 +9,7 @@ function uploader(uploadResult, signatureError) {
   const context=vm.createContext({exports:{},URL,Blob,FormData,AbortController,setTimeout,clearTimeout,
     require(name){
       if(name==='react-native') return {Platform:{OS:'web'}};
+      if(name==='expo-image-manipulator') return {SaveFormat:{JPEG:'jpeg'},manipulateAsync:async uri=>({uri})};
       if(name==='./api') return {getCloudinarySignature:async()=>{if(signatureError)throw new Error(signatureError);return signed;}};
       throw new Error(name);
     },

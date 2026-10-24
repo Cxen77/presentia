@@ -27,8 +27,6 @@ export const FacultyPortalModal: React.FC<FacultyPortalModalProps> = ({
 
   useEffect(() => {
     if (!visible) return;
-    setSession(attendanceService.getCurrentSession());
-
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
@@ -54,7 +52,8 @@ export const FacultyPortalModal: React.FC<FacultyPortalModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}
+      onShow={() => setSession(attendanceService.getCurrentSession())}>
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}

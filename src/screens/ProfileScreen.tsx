@@ -37,14 +37,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onLogout }) => {
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
   const loadProfile = async () => {
     const profile = await studentService.getProfile();
     setStudent(profile);
   };
+
+  useEffect(() => {
+    let active = true;
+    void studentService.getProfile().then(profile => {
+      if (active) setStudent(profile);
+    });
+    return () => { active = false; };
+  }, []);
 
   const handleUpdatePhoto = async () => {
     try {
