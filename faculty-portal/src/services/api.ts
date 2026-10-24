@@ -4,16 +4,9 @@
  * Supabase client is only used directly for auth operations and Realtime subscriptions.
  */
 import { supabase } from './supabase';
+import { authenticatedRequest } from './sessionRecovery';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-
-/**
- * Gets the current Supabase access token.
- */
-async function getAccessToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || null;
-}
 
 /**
  * Makes an authenticated API request to the Render backend.
@@ -28,15 +21,7 @@ async function apiRequest<T = any>(
   } = {}
 ): Promise<T> {
   const { method = 'GET', body, responseType = 'json', timeoutMs = 30000 } = options;
-  const token = await getAccessToken();
-
-  if (!token) {
-    throw new Error('Not authenticated. Please sign in.');
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
+  const headers: Record<string, string> = {};
 
   if (body && method !== 'GET') {
     headers['Content-Type'] = 'application/json';
@@ -46,12 +31,12 @@ async function apiRequest<T = any>(
   const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const res = await authenticatedRequest(supabase.auth, token => fetch(`${API_BASE_URL}${path}`, {
       method,
-      headers,
+      headers: {...headers,Authorization:`Bearer ${token}`},
       body: body ? JSON.stringify(body) : undefined,
       signal: controller ? controller.signal : undefined,
-    });
+    }));
 
     if (!res.ok) {
       let errorMessage = `Request failed (${res.status})`;
@@ -173,12 +158,9 @@ export async function verifyAttendance(
 // =============================================================================
 
 export async function downloadSessionReport(sessionId: string): Promise<void> {
-  const token = await getAccessToken();
-  if (!token) throw new Error('Not authenticated');
-
-  const res = await fetch(`${API_BASE_URL}/api/reports/session/${sessionId}/excel`, {
+  const res = await authenticatedRequest(supabase.auth,token => fetch(`${API_BASE_URL}/api/reports/session/${sessionId}/excel`, {
     headers: { Authorization: `Bearer ${token}` },
-  });
+  }));
 
   if (!res.ok) {
     let msg = 'Failed to generate report';

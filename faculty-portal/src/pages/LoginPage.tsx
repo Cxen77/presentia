@@ -129,6 +129,7 @@ export const LoginPage: React.FC = () => {
                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74869d]" />
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required

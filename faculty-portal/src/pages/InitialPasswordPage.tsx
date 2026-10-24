@@ -3,6 +3,7 @@ import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { changeInitialPassword } from '../services/api';
 import { supabase } from '../services/supabase';
+import { establishPasswordSession } from '../services/sessionRecovery';
 export function InitialPasswordPage() {
   const { user, refreshUser, logout } = useAuth();
   const [password, setPassword] = useState(''),
@@ -18,9 +19,10 @@ export function InitialPasswordPage() {
     }
     setBusy(true);
     try {
-      await changeInitialPassword(password);
-      const { error } = await supabase.auth.refreshSession();
-      if (error) throw error;
+      if(!user?.email)throw new Error('Sign in again before setting your password.');
+      await establishPasswordSession(supabase.auth,user.email,password,changeInitialPassword);
+      setPassword('');
+      setConfirm('');
       await refreshUser();
     } catch (e) {
       setError(
