@@ -1,8 +1,9 @@
-import React, { useState, useCallback, type CSSProperties } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import React, { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
+import { QuickNavigation } from './components/layout/QuickNavigation';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ClassesPage } from './pages/ClassesPage';
@@ -39,20 +40,24 @@ function AdminRoute(){const {user}=useAuth();return user?.role==='admin'?<People
 function HomeRoute(){const {user}=useAuth();return user?.role==='admin'?<Navigate to="/admin" replace/>:<DashboardPage/>;}
 
 const AppLayout: React.FC = () => {
+  const {pathname}=useLocation();
+  const [quickOpen,setQuickOpen]=useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
+  useEffect(()=>{const onKey=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setQuickOpen(open=>!open);}};document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey);},[]);
 
   return (
     <div className="portal-shell" style={{ '--sidebar-width': sidebarCollapsed ? '72px' : '216px' } as CSSProperties}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       <Sidebar collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} mobileOpen={mobileOpen} onClose={closeMobileMenu} />
       <div className="portal-content" inert={mobileOpen}>
-        <Header onMenuToggle={() => setMobileOpen(true)} menuOpen={mobileOpen} />
+        <Header onMenuToggle={() => setMobileOpen(true)} menuOpen={mobileOpen} onQuickNavigation={()=>setQuickOpen(true)} />
         <main id="main-content" className="portal-main" tabIndex={-1}>
-          <Outlet />
+          <div className="page-transition" key={pathname}><Outlet /></div>
         </main>
       </div>
+      {quickOpen&&<QuickNavigation onClose={()=>setQuickOpen(false)}/>}
     </div>
   );
 };

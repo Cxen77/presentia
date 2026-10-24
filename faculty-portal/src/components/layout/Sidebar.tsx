@@ -37,13 +37,13 @@ export function Sidebar({ collapsed, setCollapsed, mobileOpen, onClose }: Sideba
     <aside ref={sidebarRef} id="portal-navigation" className={`portal-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-open' : ''}`} aria-label="Faculty workspace">
       <div className="sidebar-brand"><div className="brand-mark"><GraduationCap size={21} /></div><div className="sidebar-label"><strong>Presentia<span className="brand-dot">.</span></strong><span>{user?.role==='admin'?'Admin workspace':'Faculty workspace'}</span></div>
         <button className="icon-button mobile-close" onClick={onClose} aria-label="Close navigation"><X size={18} /></button></div>
-      <div className="sidebar-section-label sidebar-label">WORKSPACE</div>
+      <div className="sidebar-section-label sidebar-label">Workspace</div>
       <nav aria-label="Main navigation">{links.map(({ path, label, icon: Icon }) =>
         <NavLink key={path} to={path} end={path === '/'} onClick={onClose} title={collapsed ? label : undefined}
           className={({ isActive }) => `sidebar-link ${isActive ? 'is-active' : ''}`}><Icon size={18} strokeWidth={1.7} /><span className="sidebar-label">{label}</span></NavLink>
       )}</nav>
       <div className="sidebar-bottom">
-        <div className="sidebar-tip sidebar-label"><span className="status-dot" /><span>Connected workspace</span></div>
+        <div className="sidebar-tip sidebar-label"><GraduationCap size={14}/><span>Class attendance workspace</span></div>
         <button className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}<span className="sidebar-label">Collapse sidebar</span></button>
         <div className="sidebar-account"><div className="avatar-initial" aria-hidden="true">{user?.name?.slice(0, 1).toUpperCase() || 'F'}</div><div className="sidebar-label min-w-0 flex-1"><strong>{user?.name}</strong><span>{user?.role==='admin'?'Administrator':'Faculty account'}</span></div>

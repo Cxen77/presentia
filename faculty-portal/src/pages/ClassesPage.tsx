@@ -9,6 +9,9 @@ import {
   SlidersHorizontal,
   ArrowUpRight,
   Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { attendanceDataService } from "../services/attendanceDataService";
@@ -17,6 +20,7 @@ import { ClassDetailsModal } from "./ClassDetailsModal";
 import { deleteClass, updateClass } from "../services/api";
 import { EditClassDialog } from "./EditClassDialog";
 import {
+  Dialog,
   EmptyState,
   InlineError,
   PageHeading,
@@ -32,6 +36,7 @@ export function ClassesPage() {
     [showDeleted, setShowDeleted] = useState(false),
     [deleting, setDeleting] = useState<string | null>(null);
   const [selected, setSelected] = useState<ClassItem | null>(null);
+  const [optionsFor, setOptionsFor] = useState<ClassItem | null>(null);
   const [editing, setEditing] = useState<ClassItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +218,7 @@ export function ClassesPage() {
                   {cls.classType}
                 </span>
               </div>
-              <h2>{cls.className}</h2>
+              <h2 title={cls.className}>{cls.className}</h2>
               <p className="mt-1 text-[11px] text-slate-400">
                 {cls.semester} · {cls.department}
               </p>
@@ -243,31 +248,18 @@ export function ClassesPage() {
                   <ArrowUpRight size={13} />
                 </button>
               </div>
-              <div className="flex items-center justify-between mt-3">
-                <button className="text-link" onClick={() => setEditing(cls)}>
-                  Edit class details
-                </button>
-                {showDeleted ? (
-                  <button
-                    className="text-link"
-                    onClick={() => void restore(cls)}
-                  >
-                    Restore class
-                  </button>
-                ) : (
-                  <button
-                    className="text-xs text-red-300"
-                    disabled={deleting === cls.id}
-                    onClick={() => void remove(cls)}
-                  >
-                    {deleting === cls.id ? "Deleting…" : "Delete class"}
-                  </button>
-                )}
+              <div className="class-options">
+                {showDeleted && <button className="text-link" onClick={() => void restore(cls)}>Restore class</button>}
+                <button className="icon-button" disabled={deleting === cls.id} aria-label={`Options for ${cls.courseCode}`} onClick={() => setOptionsFor(cls)}><MoreHorizontal size={17}/></button>
               </div>
             </article>
           ))}
         </div>
       )}
+      {optionsFor && <Dialog title={optionsFor.courseCode + " options"} onClose={() => setOptionsFor(null)}><div className="account-actions">
+        <button onClick={() => {setEditing(optionsFor);setOptionsFor(null);}}><Pencil size={18}/><span><strong>Edit class details</strong><small>Update the course, timetable and campus settings.</small></span></button>
+        {!showDeleted && <button className="destructive-action" onClick={() => {const cls=optionsFor;setOptionsFor(null);void remove(cls);}}><Trash2 size={18}/><span><strong>Delete class</strong><small>Remove from active classes and retain attendance history.</small></span></button>}
+      </div></Dialog>}
       {selected && (
         <ClassDetailsModal
           key={selected.id}

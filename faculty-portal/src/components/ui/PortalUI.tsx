@@ -4,7 +4,7 @@ import { ChevronDown, X, type LucideIcon } from 'lucide-react';
 export function PageHeading({ title, description, action, eyebrow }: {
   title: string; description: string; action?: ReactNode; eyebrow?: string;
 }) {
-  return <div className="page-heading"><div className="min-w-0">{eyebrow && <p className="eyebrow">{eyebrow}</p>}
+  return <div className="page-heading"><div className="min-w-0">{eyebrow && <span className="sr-only">{eyebrow}</span>}
     <h1>{title}</h1><p className="page-description">{description}</p></div>{action && <div className="page-actions">{action}</div>}
   </div>;
 }
@@ -27,11 +27,13 @@ export function Dialog({ title, subtitle, onClose, children, footer }: {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
     const dialog = ref.current;
     dialog?.showModal();
+    dialog?.querySelector<HTMLElement>('[autofocus], [data-dialog-autofocus]')?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { dialog?.close(); document.body.style.overflow = previousOverflow; };
+    return () => { dialog?.close(); document.body.style.overflow = previousOverflow; previousFocus?.focus(); };
   }, []);
   return <dialog ref={ref} className="portal-dialog" aria-labelledby={titleId} onCancel={onClose}
     onClick={event => { if (event.target === event.currentTarget) {

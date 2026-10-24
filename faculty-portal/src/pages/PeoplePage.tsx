@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Trash2,
   RotateCcw,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   Dialog,
@@ -42,6 +43,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
     [adding, setAdding] = useState(false),
     [credentials, setCredentials] = useState<FacultyCredentials | null>(null),
     [copied, setCopied] = useState(false);
+  const [actionsFor, setActionsFor] = useState<ManagedPerson | null>(null);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -220,64 +222,19 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
         }
       />
       <InlineError message={!editing && !adding ? error : null} />
-      {admin && (
-        <>
-          <div className="stats-grid">
-            {[
-              ["Faculty", people.filter((p) => p.role === "faculty" && !p.archivedAt).length],
-              ["Students", people.filter((p) => p.role === "student").length],
-              [
-                "Administrator",
-                people.filter((p) => p.role === "admin").length,
-              ],
-            ].map(([label, count]) => (
-              <div className="panel p-4" key={label}>
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className="text-2xl font-semibold mt-2">{count}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button
-              className={`p-button small ${tab === "faculty" ? "" : "secondary"}`}
-              onClick={() => {
-                setTab("faculty");
-                setShowDeleted(false);
-              }}
-            >
-              Faculty
-            </button>
-            <button
-              className={`p-button small ${tab === "student" ? "" : "secondary"}`}
-              onClick={() => {
-                setTab("student");
-                setShowDeleted(false);
-              }}
-            >
-              Students
-            </button>
-          </div>
-        </>
-      )}
-      {admin && tab === "faculty" && (
-        <label className="text-xs text-slate-400 flex gap-2 items-center">
-          <input
-            type="checkbox"
-            checked={showDeleted}
-            onChange={(e) => setShowDeleted(e.target.checked)}
-          />
-          Show deleted faculty
-        </label>
-      )}
-      <label className="search-field">
-        <Search size={16} />
-        <input
-          aria-label="Search people"
-          placeholder="Search name, ID or email…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </label>
+      <section className="directory-controls">
+        {admin && <div className="directory-tabs" aria-label="Account type">
+          {(["faculty", "student"] as const).map(kind => <button key={kind} className={tab === kind ? "is-selected" : ""} aria-pressed={tab === kind} onClick={() => {setTab(kind);setShowDeleted(false);}}>
+            {kind === "faculty" ? "Faculty" : "Students"}<span>{people.filter(p => p.role === kind && !p.archivedAt).length}</span>
+          </button>)}
+          <span className="directory-owner"><ShieldCheck size={13}/> {people.filter(p => p.role === "admin").length} administrator</span>
+        </div>}
+        <div className="directory-toolbar">
+          <label className="search-field"><Search size={16}/><input aria-label="Search people" placeholder="Search name, ID, section or email…" value={search} onChange={e => setSearch(e.target.value)}/></label>
+          {admin && tab === "faculty" && <label className="archive-filter"><input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)}/> Show deleted faculty</label>}
+          <span className="directory-count" role="status">{loading ? "Loading…" : `${shown.length} ${shown.length === 1 ? "account" : "accounts"}`}</span>
+        </div>
+      </section>
       {loading ? (
         <div className="panel p-6 text-sm text-slate-400">
           Loading accounts…
@@ -297,12 +254,12 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
       ) : (
         <div className="panel overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="people-table w-full text-left text-xs">
               <thead className="bg-slate-800/40 text-slate-400">
                 <tr>
                   <th className="p-4">Name</th>
                   <th className="p-4">ID / USN</th>
-                  <th className="p-4">Roll / Section</th>
+                  {(!admin || tab === "student") && <th className="p-4">Roll / Section</th>}
                   <th className="p-4">Department & classes</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
@@ -311,32 +268,30 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                 {shown.map((p) => (
                   <tr key={p.id}>
                     <td className="p-4">
-                      <p className="font-medium text-slate-100">{p.name}</p>
+                      <p className="person-name"><span className="person-initial" aria-hidden="true">{p.name.slice(0,1).toUpperCase()}</span>{p.name}</p>
                       <p className="text-[11px] text-slate-400 mt-1">
                         {p.email}
                       </p>
                     </td>
-                    <td className="p-4 font-mono text-indigo-200">
+                    <td data-label="ID / USN" className="p-4 font-mono text-blue-200">
                       {p.loginId || "—"}
                     </td>
-                    <td className="p-4 text-slate-400">
-                      {p.role === "student" ? (
+                    {p.role === "student" && <td data-label="Roll / Section" className="p-4 text-slate-400">
+                      {(
                         <>
                           <p>Roll {p.classRollNumber || "—"}</p>
                           <p className="mt-1 text-[10px]">
                             Section {p.section || "—"}
                           </p>
                         </>
-                      ) : (
-                        "Staff"
                       )}
-                    </td>
-                    <td className="p-4 text-slate-400">
+                    </td>}
+                    <td data-label="Department" className="p-4 text-slate-400">
                       {p.department}
                       <p className="text-[10px] mt-1">{p.semester}</p>
                       {p.role === "student" && (
                         <details className="mt-2">
-                          <summary className="cursor-pointer text-indigo-200">
+                          <summary className="cursor-pointer text-blue-200">
                             {p.classes?.length || 0} {p.classes?.length === 1 ? 'class' : 'classes'}
                           </summary>
                           <ul className="mt-2 space-y-2">
@@ -352,7 +307,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                         </details>
                       )}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 person-actions">
                       <div className="flex gap-2 justify-end">
                         <button
                           className="p-button secondary small"
@@ -362,37 +317,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                           <Pencil size={12} />
                           Edit
                         </button>
-                        {admin &&
-                          p.role === "faculty" &&
-                          (p.archivedAt ? (
-                            <button
-                              disabled={busy}
-                              className="p-button secondary small"
-                              onClick={() => void restore(p)}
-                            >
-                              <RotateCcw size={12} />
-                              Restore
-                            </button>
-                          ) : (
-                            <button
-                              disabled={busy}
-                              className="p-button ghost small text-red-300"
-                              aria-label={`Delete ${p.name}`}
-                              onClick={() => void removeFaculty(p)}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          ))}
-                        {admin && p.role === "faculty" && !p.archivedAt && (
-                          <button
-                            disabled={busy}
-                            className="p-button secondary small"
-                            onClick={() => void reset(p)}
-                          >
-                            <KeyRound size={12} />
-                            New password
-                          </button>
-                        )}
+                        {admin && p.role === "faculty" && (p.archivedAt ? <button disabled={busy} className="p-button secondary small" onClick={() => void restore(p)}><RotateCcw size={12}/>Restore</button> : <button disabled={busy} className="icon-button" aria-label={`More actions for ${p.name}`} onClick={() => setActionsFor(p)}><MoreHorizontal size={17}/></button>)}
                       </div>
                     </td>
                   </tr>
@@ -402,6 +327,12 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
           </div>
         </div>
       )}
+      {actionsFor && <Dialog title={`Actions for ${actionsFor.name}`} onClose={() => setActionsFor(null)}>
+        <div className="account-actions">
+          <button onClick={() => {const person=actionsFor;setActionsFor(null);void reset(person);}}><KeyRound size={18}/><span><strong>Issue new password</strong><small>Replace their current password with a new initial password.</small></span></button>
+          <button className="destructive-action" onClick={() => {const person=actionsFor;setActionsFor(null);void removeFaculty(person);}}><Trash2 size={18}/><span><strong>Delete faculty access</strong><small>Block portal access while retaining attendance history.</small></span></button>
+        </div>
+      </Dialog>}
       {(adding || editing) && (
         <Dialog
           title={adding ? "Add faculty" : `Edit ${editing?.name}`}
