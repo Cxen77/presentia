@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Calendar, ChevronDown, Download, FileSpreadsheet, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
-import { EmptyState, InlineError, PageHeading, RosterSkeleton } from '../components/ui/PortalUI';
+import { Calendar, ChevronDown, Download, FileSpreadsheet, RefreshCw, CheckCircle2, ArrowRight, EyeOff, RotateCcw } from 'lucide-react';
+import { EmptyState, InlineError, PageHeading } from '../components/ui/PortalUI';
 import { attendanceDataService } from '../services/attendanceDataService';
 import { downloadSessionReport } from '../services/api';
 import type { AttendanceSession } from '../types';
+import { supabase } from '../services/supabase';
+import { loadIgnoredReports, setReportIgnored } from '../utils/reportVisibility';
 
 type FullRosterData = NonNullable<Awaited<ReturnType<typeof attendanceDataService.getSessionFullRoster>>>;
 type ResultFilter = 'ALL'|'PRESENT'|'ABSENT'|'PENDING';
@@ -17,9 +19,16 @@ export function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<string|null>(null);
   const [error, setError] = useState<string|null>(null);
+  const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
+  const [showIgnored, setShowIgnored] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityLoaded, setVisibilityLoaded] = useState(false);
   const [filter, setFilter] = useState<ResultFilter>('ALL');
   const loadSessions = useCallback(async () => {
-    try {setSessions(await attendanceDataService.getAllSessions());}
+    try {
+      const [allSessions, ignored] = await Promise.all([attendanceDataService.getAllSessions(), loadIgnoredReports(supabase.auth)]);
+      setSessions(allSessions);setIgnoredIds(ignored);setVisibilityLoaded(true);
+    }
     catch(reason) {setError(reason instanceof Error ? reason.message : 'Could not load reports.');}
   }, []);
   useEffect(() => {void loadSessions();return attendanceDataService.subscribe(() => void loadSessions());}, [loadSessions]);
@@ -45,16 +54,27 @@ export function ReportsPage() {
     catch(reason) {setError(reason instanceof Error ? reason.message : 'Could not download the sheet.');}
     finally {setExporting(null);}
   };
+  const changeVisibility = async (id:string, ignored:boolean) => {
+    setVisibilityBusy(true);setError(null);
+    try {
+      setIgnoredIds(await setReportIgnored(supabase.auth,id,ignored));
+      if (ignored && expandedId === id) setExpandedId(null);
+    } catch(reason) {setError(reason instanceof Error ? reason.message : 'Could not save report visibility.');}
+    finally {setVisibilityBusy(false);}
+  };
+  const visibleSessions = sessions.filter(session => showIgnored || !ignoredIds.has(session.id));
+  const ignoredCount = sessions.filter(session => ignoredIds.has(session.id)).length;
   const shown = roster?.roster.filter(item => filter === 'ALL' || item.status === filter) || [];
 
   return <div className="page-stack attendance-reports">
     <PageHeading title="Attendance reports" description="Present and absent students, saved for each class session." action={<button className="p-button secondary" onClick={() => void loadSessions()}><RefreshCw size={14}/>Refresh</button>}/>
     <InlineError message={error}/>
-    {!sessions.length ? <section className="panel"><EmptyState icon={FileSpreadsheet} title="No attendance reports yet" description="End a check-in session and confirm its photo-verification list to save attendance." action={<Link className="p-button" to="/live-attendance">Open attendance</Link>}/></section> : <div className="report-sessions">{sessions.map(session => {
+    {ignoredCount > 0 && <div className="toolbar"><span className="toolbar-meta">{visibleSessions.length} visible reports</span><label className="archive-filter"><input type="checkbox" checked={showIgnored} onChange={event => setShowIgnored(event.target.checked)}/>Show ignored test sessions ({ignoredCount})</label></div>}
+    {!sessions.length ? <section className="panel"><EmptyState icon={FileSpreadsheet} title="No attendance reports yet" description="End a check-in session and confirm its photo-verification list to save attendance." action={<Link className="p-button" to="/live-attendance">Open attendance</Link>}/></section> : <div className="report-sessions">{visibleSessions.map(session => {
       const expanded = session.id === expandedId;
       const current = expanded && roster?.session.id === session.id ? roster : null;
-      return <section className={`report-session ${expanded ? 'is-expanded' : ''}`} key={session.id}>
-        <header className="report-session-header"><button className="report-session-title" aria-expanded={expanded} aria-controls={`report-${session.id}`} onClick={() => {setExpandedId(expanded ? null : session.id);setFilter('ALL');}}><span className="course-badge">{session.courseCode}</span><span><strong>{session.className}</strong><small><Calendar size={12}/>{session.date}<span>{session.startTime} – {session.endTime}</span></small></span><ChevronDown size={16}/></button><div className="report-session-actions"><span className="report-state">{session.status === 'ACTIVE' ? 'Check-in open' : session.status === 'AWAITING_VERIFICATION' ? 'Needs confirmation' : 'Confirmed'}</span>{session.status !== 'CLOSED' ? <Link className="p-button secondary small" to={`/live-attendance?session=${session.id}`}>Review class<ArrowRight size={12}/></Link> : <button className="p-button secondary small" disabled={exporting === session.id} onClick={() => void download(session.id)}><Download size={13}/>{exporting === session.id ? 'Downloading…' : 'Download sheet'}</button>}</div></header>
+      return <section className={`report-session ${expanded ? 'is-expanded' : ''}`} key={session.id} data-session-id={session.id}>
+        <header className="report-session-header"><button className="report-session-title" aria-expanded={expanded} aria-controls={`report-${session.id}`} onClick={() => {setExpandedId(expanded ? null : session.id);setFilter('ALL');}}><span className="course-badge">{session.courseCode}</span><span><strong>{session.className}</strong><small><Calendar size={12}/>{session.date}<span>{session.startTime} – {session.endTime}</span></small></span><ChevronDown size={16}/></button><div className="report-session-actions">{ignoredIds.has(session.id) ? <button className="p-button ghost small" disabled={visibilityBusy} onClick={() => void changeVisibility(session.id,false)}><RotateCcw size={12}/>Restore report</button> : session.status === 'AWAITING_VERIFICATION' && <button className="icon-button" title="Ignore test session" aria-label="Ignore test session" disabled={visibilityBusy || !visibilityLoaded} onClick={() => void changeVisibility(session.id,true)}><EyeOff size={15}/></button>}<span className="report-state">{ignoredIds.has(session.id) ? 'Ignored test session' : session.status === 'ACTIVE' ? 'Check-in open' : session.status === 'AWAITING_VERIFICATION' ? 'Needs confirmation' : 'Confirmed'}</span>{session.status !== 'CLOSED' ? <Link className="p-button secondary small" to={`/live-attendance?session=${session.id}`}>Review class<ArrowRight size={12}/></Link> : <button className="p-button secondary small" disabled={exporting === session.id} onClick={() => void download(session.id)}><Download size={13}/>{exporting === session.id ? 'Downloading…' : 'Download sheet'}</button>}</div></header>
         {expanded && <div id={`report-${session.id}`} className="report-session-body">{loading ? <p className="desk-loading" role="status">Loading the class roster…</p> : current ? <>
           <div className="report-result-summary"><span><strong>{current.metrics.totalEnrolled}</strong> students</span><span><strong>{current.metrics.present}</strong> present</span><span><strong>{current.metrics.absent}</strong> absent</span>{current.metrics.pending > 0 && <span><strong>{current.metrics.pending}</strong> awaiting confirmation</span>}</div>
           {current.session.finalizedAt && <p className="report-cleanup-status"><CheckCircle2 size={14}/>{current.session.selfieCleanupPending ? `Attendance saved. Deleting ${current.session.selfieCleanupPending} session selfies…` : 'Session selfies deleted. Profile photos and attendance history are retained.'}</p>}

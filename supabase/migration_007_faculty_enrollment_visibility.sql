@@ -6,6 +6,9 @@
 -- missing the faculty-side SELECT policy on class_enrollments.
 -- Idempotent: safe to run whether or not an earlier variant exists.
 
+-- Keep the existing policy intact if the replacement fails.
+BEGIN;
+
 DROP POLICY IF EXISTS "Faculty can view enrollments for own classes" ON public.class_enrollments;
 
 CREATE POLICY "Faculty can view enrollments for own classes"
@@ -20,3 +23,5 @@ CREATE POLICY "Faculty can view enrollments for own classes"
         )
       )
     );
+
+COMMIT;
