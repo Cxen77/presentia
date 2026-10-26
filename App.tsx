@@ -3585,6 +3585,9 @@ const styles = StyleSheet.create({
     padding: 22,
     borderTopWidth: 1.5,
     borderTopColor: '#1E3C60',
+    // Scanner opens tall: the camera preview dominates the screen so aligning
+    // a phone camera with the faculty QR is easy.
+    height: '94%',
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -3647,7 +3650,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cameraPlaceholderBox: {
-    height: 200,
+    flex: 1,
     backgroundColor: '#081726',
     borderRadius: 18,
     justifyContent: 'center',
@@ -3672,7 +3675,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cameraViewWrap: {
-    height: 200,
+    flex: 1,
     borderRadius: 18,
     overflow: 'hidden',
     position: 'relative',
@@ -3681,11 +3684,11 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   scanTargetBox: {
-    width: 140,
-    height: 140,
+    width: '68%',
+    aspectRatio: 1,
     borderWidth: 2,
     borderColor: '#9AB9EC',
-    borderRadius: 16,
+    borderRadius: 24,
   },
   detectedClassCard: {
     backgroundColor: '#122D47',
