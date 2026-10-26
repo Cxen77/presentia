@@ -68,12 +68,12 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={["#2C4E86", "#17335C", "#081726"]}
+        colors={[Colors.backgroundSecondary, Colors.backgroundDark, Colors.background]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* Soft light blobs for depth, in the app's blue family. */}
+      {/* Soft accent glow for depth, matching the app canvas. */}
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         <View style={[s.blob, s.blobAccent]} />
         <View style={[s.blob, s.blobWhite]} />
@@ -157,7 +157,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
                   <View key={n} style={s.step}>
                     <View style={s.stepTop}>
                       <Text style={s.stepNumber}>{n}</Text>
-                      <Icon size={15} color="#E4E1FF" strokeWidth={1.5} />
+                      <Icon size={15} color={Colors.textBrightBlue} strokeWidth={1.5} />
                     </View>
                     <Text style={s.stepLabel}>{label}</Text>
                   </View>
@@ -183,7 +183,7 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
               >
                 <Text style={s.continueText}>Start</Text>
                 <View style={s.continueArrow}>
-                  <ArrowRight size={18} color="#5B4BD6" strokeWidth={2.4} />
+                  <ArrowRight size={18} color={Colors.textDarkNavy} strokeWidth={2.4} />
                 </View>
               </TouchableOpacity>
               <Text style={s.note}>Sign in or create your student account.</Text>
@@ -217,10 +217,10 @@ const s = StyleSheet.create({
     letterSpacing: -0.8,
     color: "#FFFFFF",
   },
-  brandDot: { color: "#F2A0AC" },
+  brandDot: { color: Colors.textAccentBlue },
   edition: {
     fontSize: 8,
-    color: "rgba(255,255,255,0.65)",
+    color: "#7F94B0",
     letterSpacing: 1.6,
     fontWeight: "600",
   },
@@ -230,7 +230,7 @@ const s = StyleSheet.create({
     height: 300,
     right: -110,
     top: -90,
-    backgroundColor: "rgba(154,185,236,0.20)",
+    backgroundColor: "rgba(154,185,236,0.12)",
   },
   blobWhite: {
     width: 260,
@@ -253,7 +253,7 @@ const s = StyleSheet.create({
     left: 7,
     right: 7,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.45)",
+    borderColor: "#436B9B",
     borderRadius: 18,
     transform: [{ rotate: "4deg" }],
   },
@@ -328,11 +328,11 @@ const s = StyleSheet.create({
     color: "#FFFFFF",
   },
   compactTitle: { fontSize: 31, lineHeight: 37 },
-  titleMuted: { color: "#D9D4FF" },
+  titleMuted: { color: Colors.textBrightBlue },
   description: {
     fontSize: 13,
     lineHeight: 21,
-    color: "rgba(255,255,255,0.82)",
+    color: Colors.textSecondary,
     marginTop: 12,
     maxWidth: 300,
   },
@@ -341,8 +341,8 @@ const s = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    borderColor: "#1C334A",
+    backgroundColor: "#142539",
     paddingVertical: 10,
     paddingHorizontal: 11,
   },
@@ -353,10 +353,10 @@ const s = StyleSheet.create({
   },
   stepNumber: {
     fontSize: 9,
-    color: "rgba(255,255,255,0.7)",
+    color: "#7F94B0",
     fontVariant: ["tabular-nums"],
   },
-  stepLabel: { fontSize: 10, color: "#F0EEFF", marginTop: 8, fontWeight: "600" },
+  stepLabel: { fontSize: 10, color: "#DCE8FA", marginTop: 8, fontWeight: "600" },
   bottom: { gap: 12 },
   dots: {
     flexDirection: "row",
@@ -366,8 +366,8 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   dotPill: { height: 6, borderRadius: 3 },
-  dotActive: { width: 22, backgroundColor: "#F2A0AC" },
-  dotIdle: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.35)" },
+  dotActive: { width: 22, backgroundColor: Colors.textAccentBlue },
+  dotIdle: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#2A4058" },
   continue: {
     minHeight: 54,
     paddingHorizontal: 20,
@@ -385,16 +385,16 @@ const s = StyleSheet.create({
   continueText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#1B1650",
+    color: Colors.textDarkNavy,
     letterSpacing: 0.2,
   },
   continueArrow: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#EEEBFF",
+    backgroundColor: "#DDE8F8",
     alignItems: "center",
     justifyContent: "center",
   },
-  note: { fontSize: 10, textAlign: "center", color: "rgba(255,255,255,0.6)" },
+  note: { fontSize: 10, textAlign: "center", color: "#7F94B0" },
 });

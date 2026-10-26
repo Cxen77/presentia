@@ -1787,9 +1787,8 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
         {/* Classes Section Header */}
         <FadeSlide delay={150}>
           <View style={styles.classesHeaderRow}>
-            <View style={styles.sectionTitleRow}>
+            <View>
               <Text style={styles.sectionHeaderTitle}>Enrolled Classes</Text>
-              <View style={styles.sectionCountChip}><Text style={styles.sectionCountText}>{classes.length}</Text></View>
             </View>
             <TouchableOpacity style={styles.joinBtnAction} onPress={() => setJoinModalVisible(true)}>
               <Plus size={15} color="#061522" strokeWidth={3} style={{ marginRight: 4 }} />
