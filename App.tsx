@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  Easing,
   Modal,
   AppState,
 } from 'react-native';
@@ -77,7 +78,7 @@ import { ProfileSettingsModal, type SettingsSection } from './src/components/Pro
 import { clearStudentCache } from './src/services/studentCache';
 import { getAttendanceLocation, warmGrantedLocation } from './src/services/checkInLocation';
 import { uploadCloudinaryImage, uploadImageToCloudinary, optimizedAvatarUrl } from './src/services/cloudinary';
-import { SkeletonBlock } from './src/components/Skeleton';
+import { SkeletonBlock, ClassCardSkeleton } from './src/components/Skeleton';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -1041,6 +1042,19 @@ export const QRScannerModal: React.FC<{
 // 6. MAIN SCREENS
 // ============================================================================
 
+/** Quiet entrance: children fade in and rise once on mount. */
+const FadeSlide: React.FC<{ delay?: number; children: React.ReactNode; style?: any }> = ({ delay = 0, children, style }) => {
+  const [progress] = React.useState(() => new Animated.Value(0));
+  React.useEffect(() => {
+    Animated.timing(progress, { toValue: 1, duration: 460, delay, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [progress, delay]);
+  return (
+    <Animated.View style={[style, { opacity: progress, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }]}>
+      {children}
+    </Animated.View>
+  );
+};
+
 // A. ONBOARDING SCREEN
 export const OnboardingScreen: React.FC<{ onGetStarted: () => void }> = ({ onGetStarted }) => <WelcomeScreen onContinue={onGetStarted}/>;
 
@@ -1732,51 +1746,64 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
   }
 
   const activeStudent = student;
+  const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
 
   return (
     <AppBackground variant="dashboard">
       <ScrollView contentContainerStyle={styles.screenPadding} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.dashHeaderRow}>
-          <View>
-            <Text style={styles.dashGreeting}>Hello,</Text>
-            <Text style={styles.dashName}>{activeStudent.firstName}</Text>
-            <Text style={styles.dashSubtitle}>Let's make today count</Text>
+        <FadeSlide delay={0}>
+          <View style={styles.dashHeaderRow}>
+            <View>
+              <Text style={styles.dashGreeting}>Hello,</Text>
+              <View style={styles.dashNameRow}>
+                <Text style={styles.dashName}>{activeStudent.firstName}</Text>
+                <View style={styles.dashNameDot} />
+              </View>
+              <Text style={styles.dashSubtitle}>{dateLine} · Let's make it count</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={styles.headerRoundBtn} accessibilityRole="button" accessibilityLabel="Scan QR code" onPress={() => setQrModalVisible(true)}>
+                <QrCode size={19} color="#9AB9EC" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerRoundBtn} accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => Alert.alert('Notifications', 'No new announcements.')}>
+                <Bell size={18} color="#D5E2F7" />
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.headerSquareBtn} accessibilityRole="button" accessibilityLabel="Scan QR code" onPress={() => setQrModalVisible(true)}>
-              <QrCode size={18} color="#9AB9EC" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerSquareBtn} accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => Alert.alert('Notifications', 'No new announcements.')}>
-              <Bell size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        </FadeSlide>
 
         {/* Profile Card */}
-        <StudentProfileCard
-          student={activeStudent}
-          enrolledClassesCount={classes.length}
-          onPressScanQR={() => setQrModalVisible(true)}
-          onPressProfile={() => onNavigateTab('profile')}
-          onEditAvatar={() => onNavigateTab('profile')}
-        />
+        <FadeSlide delay={80}>
+          <StudentProfileCard
+            student={activeStudent}
+            enrolledClassesCount={classes.length}
+            onPressScanQR={() => setQrModalVisible(true)}
+            onPressProfile={() => onNavigateTab('profile')}
+            onEditAvatar={() => onNavigateTab('profile')}
+          />
+        </FadeSlide>
 
         {/* Classes Section Header */}
-        <View style={styles.classesHeaderRow}>
-          <View>
-            <Text style={styles.sectionHeaderTitle}>Enrolled Classes</Text>
-            <Text style={styles.sectionHeaderSubtitle}>{classes.length} classes active</Text>
+        <FadeSlide delay={150}>
+          <View style={styles.classesHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionHeaderTitle}>Enrolled Classes</Text>
+              <View style={styles.sectionCountChip}><Text style={styles.sectionCountText}>{classes.length}</Text></View>
+            </View>
+            <TouchableOpacity style={styles.joinBtnAction} onPress={() => setJoinModalVisible(true)}>
+              <Plus size={15} color="#061522" strokeWidth={3} style={{ marginRight: 4 }} />
+              <Text style={styles.joinBtnText}>Join Class</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.joinBtnAction} onPress={() => setJoinModalVisible(true)}>
-            <Plus size={15} color="#061522" strokeWidth={3} style={{ marginRight: 4 }} />
-            <Text style={styles.joinBtnText}>Join Class</Text>
-          </TouchableOpacity>
-        </View>
+        </FadeSlide>
 
         {/* Classes List */}
+        <FadeSlide delay={210}>
         {loading ? (
-          <ActivityIndicator size="large" color="#9AB9EC" style={{ marginVertical: 30 }} />
+          <View style={{ gap: 12 }} accessible={false} importantForAccessibility="no-hide-descendants">
+            {[0, 1, 2].map(i => <ClassCardSkeleton key={i} />)}
+          </View>
         ) : classes.length === 0 ? (
           <View style={styles.emptyCard}>
             <BookOpen size={36} color="#9AB9EC" style={{ marginBottom: 12 }} />
@@ -1803,6 +1830,7 @@ export const HomeScreen: React.FC<{ onLogout: () => void; onNavigateTab: (tab: T
             ))}
           </View>
         )}
+        </FadeSlide>
 
         <View style={{ height: 90 }} />
       </ScrollView>
@@ -2973,6 +3001,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 20,
+  },
+  dashNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  dashNameDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#9AB9EC',
+  },
+  headerRoundBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#12273F',
+    borderWidth: 1,
+    borderColor: '#1D3B5C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  sectionCountChip: {
+    backgroundColor: '#1C3550',
+    borderWidth: 1,
+    borderColor: '#385677',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+  },
+  sectionCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B4CBF5',
   },
   dashGreeting: {
     fontSize: 20,
