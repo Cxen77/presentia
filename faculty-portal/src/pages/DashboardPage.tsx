@@ -25,6 +25,7 @@ export function DashboardPage() {
   }, [user]);
   useEffect(() => { void load(); return attendanceDataService.subscribe(() => { void load(); }); }, [load]);
   const enrollmentCount = classes.reduce((sum, cls) => sum + cls.enrolledStudentsCount, 0);
+  const sessionStateText = !session ? 'No active session' : session.status === 'ACTIVE' ? 'Attendance in progress' : 'Check-in closed — confirm attendance';
   return <div className="page-stack teaching-desk">
     <PageHeading title="Teaching desk" description={`Hello, ${user?.name || 'Faculty'}. Your courses and attendance for this semester.`}
       action={<Link className="p-button secondary" to="/create-class"><Plus size={15} aria-hidden="true"/>Create class</Link>}/>
@@ -33,18 +34,18 @@ export function DashboardPage() {
       <StaggerItem><span className="desk-stat"><strong><AnimatedNumber value={loading ? 0 : classes.length}/></strong> {classes.length === 1 ? 'class' : 'classes'}</span></StaggerItem>
       <StaggerItem><span className="desk-stat"><strong><AnimatedNumber value={loading ? 0 : enrollmentCount}/></strong> {enrollmentCount === 1 ? 'enrollment' : 'enrollments'}</span></StaggerItem>
       <StaggerItem className="desk-session-state">
-        <span className={`desk-state-mark ${session ? 'is-live' : ''}`}/>{session ? 'Attendance in progress' : 'No active session'}
+        <span className={`desk-state-mark ${session ? 'is-live' : ''}`}/>{sessionStateText}
       </StaggerItem>
     </Stagger>
     <section className="desk-courses">
-      <div className="desk-section-heading"><div><h2>Your classes</h2><p>{session ? 'Continue your live session, or open a class.' : 'Choose a course to manage students and attendance.'}</p></div><Link className="text-link" to="/classes">View all<ChevronRight size={14}/></Link></div>
+      <div className="desk-section-heading"><div><h2>Your classes</h2><p>{session ? (session.status === 'ACTIVE' ? 'Continue your live session, or open a class.' : 'A session is waiting for your confirmation.') : 'Choose a course to manage students and attendance.'}</p></div><Link className="text-link" to="/classes">View all<ChevronRight size={14}/></Link></div>
       {loading ? <CourseRowsSkeleton /> : !classes.length ? <EmptyState icon={BookOpen} title="Add your first class" description="Create a class and share its enrollment code with your students." action={<Link className="p-button" to="/create-class"><Plus size={14}/>Create class</Link>}/> :
       <Stagger className="desk-course-list" gap={0.05}>{classes.map(cls =>
         <StaggerItem key={cls.id}>
           <motion.div className={`desk-course ${session?.classId === cls.id ? 'is-live' : ''}`} whileHover={{ x: 3 }} transition={{ duration: 0.2, ease: easeOut }}>
             <span className="desk-course-code">{cls.courseCode}</span>
             <div className="desk-course-title"><Link to="/classes" title={cls.className}>{cls.className}</Link><span><Clock size={12}/>{cls.scheduleInfo || 'Schedule not set'}<span className="desk-course-room">{cls.room || ''}</span></span></div>
-            {session?.classId === cls.id && <motion.span className="desk-course-live" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }}><Link to="/live-attendance">Resume<ArrowRight size={14}/></Link></motion.span>}
+            {session?.classId === cls.id && <motion.span className="desk-course-live" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }}><Link to="/live-attendance">{session.status === 'ACTIVE' ? 'Resume' : 'Review'}<ArrowRight size={14}/></Link></motion.span>}
             <span className="desk-enrolled"><Users size={14}/><AnimatedNumber value={cls.enrolledStudentsCount}/></span>
             <Link className="desk-course-open" to="/classes" aria-label={`Open ${cls.className}`}><ChevronRight size={17}/></Link>
           </motion.div>

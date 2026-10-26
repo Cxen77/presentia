@@ -126,7 +126,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!data.session || !data.user) {
         return { success: false, error: 'No authenticated session was returned. Please sign in again.' };
       }
-      const profile = await getAuthMe();
+      // The role check rides on Render, which sleeps on the free tier. Retry
+      // once through the cold start before giving up — the Supabase session
+      // above is already valid, so the next attempt only needs a warm server.
+      let profile;
+      try {
+        profile = await getAuthMe();
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 8000));
+        try { profile = await getAuthMe(); }
+        catch {
+          return { success: false, error: 'You are signed in, but the server is still waking up (this can take a minute). Press Sign in again.' };
+        }
+      }
       if (profile.role !== 'faculty' && profile.role !== 'admin') {
         await supabase.auth.signOut({ scope: 'local' });
         return { success: false, error: 'Access denied: Only verified faculty accounts may log into this portal.' };
