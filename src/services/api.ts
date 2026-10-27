@@ -4,6 +4,7 @@
  * Supabase client is only used directly for auth operations (login/signup/session).
  */
 import { supabase } from './supabase';
+import { getInstallationId, installationPlatform } from './installation';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
@@ -171,14 +172,17 @@ export async function submitAttendance(data: {
   verificationPhotoUrl: string;
   verificationPhotoSignature: string;
   scanTicket: string;
-  location: CheckInLocation;
+  location: CheckInLocation|null;
 }) {
-  return apiRequest('/api/attendance/submit', { method: 'POST', body: data });
+  return apiRequest('/api/attendance/submit', { method: 'POST', body: {...data,installationId:await getInstallationId()} });
 }
 
 export interface CheckInLocation {latitude:number;longitude:number;accuracy:number;capturedAt:number;platform:'android'|'ios'|'web';mocked:boolean|null;developerOptions:'unavailable'}
-export async function validateAttendanceScan(qrToken: string,location:CheckInLocation) {
-  return apiRequest<{scanTicket:string;expiresAt:number;sessionId:string}>('/api/attendance/scan',{method:'POST',body:{qrToken,location}});
+export async function registerInstallation() {
+  return apiRequest('/api/devices/register',{method:'POST',body:{installationId:await getInstallationId(),platform:installationPlatform()}});
+}
+export async function validateAttendanceScan(qrToken: string,location:CheckInLocation|null) {
+  return apiRequest<{scanTicket:string;expiresAt:number;sessionId:string}>('/api/attendance/scan',{method:'POST',body:{qrToken,location,installationId:await getInstallationId(),platform:installationPlatform()}});
 }
 
 export interface CalendarSession {sessionId:string;date:string;startTime:string;endTime:string;status:'PRESENT'|'ABSENT'|'PENDING'|'OPEN';reason:string|null;verifiedAt:string|null}
@@ -194,10 +198,10 @@ export async function getMyAttendanceRecords() {
 // CLOUDINARY
 // =============================================================================
 
-export async function getCloudinarySignature(folder: string, publicId?: string) {
+export async function getCloudinarySignature(folder: string, publicId?: string, attendance?:{qrToken:string;scanTicket:string}) {
   return apiRequest<{ cloudName: string; apiKey: string; timestamp: number; signature: string; folder: string; publicId: string; type: 'upload' | 'authenticated'; overwrite: boolean }>('/api/cloudinary/signature', {
     method: 'POST',
-    body: { folder, publicId },
+    body: { folder, publicId,...attendance,...(attendance?{installationId:await getInstallationId()}:{}) },
   });
 }
 

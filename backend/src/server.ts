@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { startSelfieCleanupWorker } from './services/selfieCleanup';
+import { startProxyAuditWorker } from './services/proxyAudit';
+import deviceRoutes from './routes/devices';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -74,6 +76,7 @@ app.use('/api/classes', classRoutes);
 app.use('/api/enrollment', enrollmentRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/cloudinary', cloudinaryRoutes);
 
@@ -85,7 +88,10 @@ const port = parseInt(env.PORT, 10);
 // No host argument: Node binds dual-stack (::), so both 127.0.0.1 and ::1
 // connect instantly. Binding 0.0.0.0 left ::1 hanging ~200ms per connection.
 app.listen(port, () => {
-  startSelfieCleanupWorker();
+  if(env.NODE_ENV!=='test') {
+    startSelfieCleanupWorker();
+    startProxyAuditWorker();
+  }
   logger.info({ port, env: env.NODE_ENV }, '🚀 Backend server started');
 });
 

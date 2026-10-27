@@ -10,5 +10,7 @@ test('batch validation accepts a complete snapshot and rejects unknown or duplic
 });
 test('authorization and stale-list failures are explicit and never treated as successful confirmation',()=>{
  for(const [code,message,status] of [['42501','SESSION_FORBIDDEN',403],['P0002','SESSION_NOT_FOUND',404],['40001','REVIEW_CHANGED',409],['40001','STOP_SESSION_FIRST',409],['40001','SESSION_ALREADY_CONFIRMED',409],['22023','INVALID_EXCLUSIONS',400]])assert.equal(reviewDatabaseError({code,message}).status,status);
+ assert.equal(reviewDatabaseError({code:'PT409',message:'FLAGGED_REVIEW_REQUIRED'}).status,409);
+ assert.equal(reviewDatabaseError({code:'PT409',message:'AUDIT_NOT_READY'}).status,409);
  assert.equal(reviewDatabaseError({code:'PGRST202',message:'missing RPC'}).status,503);
 });

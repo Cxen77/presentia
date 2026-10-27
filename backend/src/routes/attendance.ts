@@ -6,6 +6,8 @@ import { logger } from '../utils/logger';
 import { isCloudinaryConfigured, isOwnedAttendancePhoto } from '../services/cloudinary';
 import { createScanTicket, readScanTicket } from '../services/scanTicket';
 import { locationSchema, checkLocation, loadClassGeofence } from '../services/geofence';
+import { installationSchema, registerDevice, ownsDevice, deviceMessage } from '../services/deviceBinding';
+import { reviewDatabaseError } from '../services/batchReview';
 import { rotateSessionToken } from '../services/qrTokens';
 
 const router = Router();
@@ -15,19 +17,20 @@ const submitSchema = z.object({
   verificationPhotoUrl: z.string().url().max(2048),
   verificationPhotoSignature: z.string().regex(/^[a-f0-9]{40}$/i),
   scanTicket: z.string().min(1).max(2048),
-  location: locationSchema,
+  location: locationSchema.nullable(),
+  installationId:installationSchema,
 });
 
 const verifySchema = z.object({
   status: z.enum(['PRESENT', 'REJECTED']),
-  rejectionReason: z.string().max(200).optional(),
+  rejectionReason: z.string().trim().min(5).max(500),
 });
 
 // Validate the rotating QR at scan time; the selfie must arrive within three minutes.
 router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
   if (!isCloudinaryConfigured()) return res.status(503).json({error:'Photo uploads are not configured yet. Please contact your teacher.'});
   const user = req.user!;
-  const parsed = z.object({ qrToken: z.string().min(1).max(512), location:locationSchema }).safeParse(req.body);
+  const parsed = z.object({ qrToken: z.string().min(1).max(512), location:locationSchema.nullable(), installationId:installationSchema, platform:z.enum(['android','ios','web']) }).safeParse(req.body);
   if (!parsed.success || !user.profileId) return res.status(400).json({ error: 'Complete your profile and scan a valid attendance QR.' });
   const { data: token, error } = await supabaseAdmin.from('qr_tokens').select('*, session:session_id(*)').eq('token', parsed.data.qrToken).maybeSingle();
   if (error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
@@ -42,10 +45,18 @@ router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
   if (enrollmentRes.error || existingRes.error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
   if (!enrollmentRes.data) return res.status(403).json({ error: 'You are not enrolled in this class.' });
   if (existingRes.data) return res.status(409).json({ error: 'You have already submitted attendance for this session.' });
+  let device;
+  try {device=await registerDevice(parsed.data.installationId,user.profileId,parsed.data.platform);}
+  catch {return res.status(503).json({error:'Device registration is unavailable. Retry shortly.'});}
+  if(!device.allowed)return res.status(409).json({error:deviceMessage(device.code),code:device.code});
   try {
     const policy=await loadClassGeofence(supabaseAdmin,session.class_id);
     const check=checkLocation(parsed.data.location,policy);
-    if(check.error)return res.status(403).json({error:check.error});
+    if(check.error){
+      const logged=await supabaseAdmin.from('attendance_risk_attempts').insert({session_id:session.id,student_id:user.profileId,installation_id:parsed.data.installationId,location:parsed.data.location,reason:check.error});
+      if(logged.error)return res.status(503).json({error:'Could not save location verification. Retry.'});
+      return res.status(403).json({error:check.error});
+    }
   }catch(error){return res.status(503).json({error:error instanceof Error?error.message:'Campus rules unavailable.'});}
   // The portal normally rotates the code from its own timer; if that tab is
   // throttled the latest code can lapse. Accept a just-expired scan (short
@@ -57,7 +68,7 @@ router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
     if (now > expiresAtMs + 15000) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
     await rotateSessionToken(session.id).catch(() => null);
   }
-  const scan = createScanTicket(user.authUserId, token.id, session.id,Date.now(),parsed.data.location);
+  const scan = createScanTicket(user.authUserId, token.id, session.id,Date.now(),parsed.data.location,parsed.data.installationId);
   return res.json({ scanTicket: scan.ticket, expiresAt: scan.expiresAt, sessionId: session.id });
 });
 
@@ -83,7 +94,7 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
     return res.status(400).json({ error: 'Invalid submission data' });
   }
 
-  const { qrToken, verificationPhotoUrl, verificationPhotoSignature, scanTicket, location } = parsed.data;
+  const { qrToken, verificationPhotoUrl, verificationPhotoSignature, scanTicket, location, installationId } = parsed.data;
   if (!isOwnedAttendancePhoto(verificationPhotoUrl, user.authUserId, verificationPhotoSignature)) {
     return res.status(400).json({ error: 'Upload a fresh selfie to your account before submitting attendance.' });
   }
@@ -101,9 +112,12 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
 
   // 2. Check token expiry (with 5-second grace for clock skew)
   const scan = readScanTicket(scanTicket, user.authUserId, tokenRecord.id, tokenRecord.session_id);
-  if (!scan || !scan.location) {
+  if (!scan || scan.installationId !== installationId) {
     return res.status(400).json({ error: 'Your selfie check-in expired. Close the camera and scan the latest QR again.' });
   }
+
+  if (!await ownsDevice(installationId,user.profileId)) return res.status(409).json({error:deviceMessage('DEVICE_CONFLICT')});
+  if(!isOwnedAttendancePhoto(verificationPhotoUrl,user.authUserId,verificationPhotoSignature,tokenRecord.session_id)) return res.status(400).json({error:'Upload a new selfie for this session.'});
 
   // 3. Check session status
   const session = tokenRecord.session as any;
@@ -140,9 +154,13 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
   try {
     const policy=await loadClassGeofence(supabaseAdmin,session.class_id);
     const check=checkLocation(location,policy);
-    if(check.error)return res.status(403).json({error:check.error});
+    if(check.error){
+      const logged=await supabaseAdmin.from('attendance_risk_attempts').insert({session_id:session.id,student_id:user.profileId,installation_id:installationId,location,reason:check.error});
+      if(logged.error)return res.status(503).json({error:'Could not save location verification. Retry.'});
+      return res.status(403).json({error:check.error});
+    }
     // Re-evaluate the signed scan fix against any updated boundary, preserving its age check at scan time.
-    const scanCheck=checkLocation({...scan.location,capturedAt:Date.now()},policy);
+    const scanCheck=checkLocation(scan.location ? {...scan.location,capturedAt:Date.now()} : null,policy);
     if(scanCheck.error)return res.status(403).json({error:'The campus boundary changed. Scan the latest QR again.'});
     locationEvidence={scan:scan.location,submission:location,receivedAt:Date.now(),campusRestricted:policy.enabled,distanceM:check.distanceM ?? null};
   }catch(error){return res.status(503).json({error:error instanceof Error?error.message:'Campus rules unavailable.'});}
@@ -158,11 +176,13 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
       verification_photo_url: verificationPhotoUrl,
       status: 'PENDING',
       checkin_location:locationEvidence,
+      installation_id:installationId,
     })
     .select()
     .single();
 
   if (insertError) {
+    if(insertError.code==='42501')return res.status(409).json({error:'Device ownership or enrollment changed. Contact your administrator.'});
     if (insertError.code === '23514' && insertError.message.includes('ATTENDANCE_SESSION_CLOSED')) return res.status(409).json({error:'Check-in has closed. Your submission was not accepted.'});
     // Handle unique constraint violation (race condition)
     if (insertError.code === '23505') {
@@ -226,27 +246,8 @@ router.put('/:id/verify', requireAuth, requireRole('faculty', 'admin'), async (r
 
   if (session.finalized_at) return res.status(409).json({error:'This session has been confirmed. Open the final report.'});
 
-  if (record.status !== 'PENDING') {
-    return res.status(400).json({ error: `Record is already ${record.status}` });
-  }
-
-  // Update the record
-  const { data: updated, error } = await supabaseAdmin
-    .from('attendance_records')
-    .update({
-      status,
-      verified_by: user.profileId,
-      verified_at: new Date().toISOString(),
-      rejection_reason: status === 'REJECTED' ? (rejectionReason || 'Visual photo mismatch') : null,
-    })
-    .eq('id', id)
-    .eq('status', 'PENDING')
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
+  const {data:updated,error}=await supabaseAdmin.rpc('review_audited_attendance',{p_record:id,p_actor:user.profileId,p_decision:status,p_reason:rejectionReason});
+  if(error){const failure=reviewDatabaseError(error);return res.status(failure.status).json({error:failure.error});}
 
   return res.json({
     id: updated.id,

@@ -35,18 +35,19 @@ export function distanceMeters(
   return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
 }
 export function checkLocation(
-  location: CheckInLocation,
+  location: CheckInLocation | null,
   policy: Geofence,
   now = Date.now(),
 ) {
+  if (!location) return policy.enabled ? {error:'Location is unavailable. Allow precise location and get a fresh GPS fix.'} : {distanceM:null};
   if (now - location.capturedAt > 60000 || location.capturedAt > now + 15000)
     return {
       error: 'Your location is out of date. Get a fresh GPS fix and retry.',
     };
-  if (location.mocked === true)
+  if (location.mocked === true && policy.enabled)
     return {
       error:
-        'Mock location detected. Turn off your mock-location app and Developer Options, then retry with real GPS.',
+        'Mock location detected. Turn off location simulation and retry with real GPS.',
     };
   if (!policy.enabled) return { distanceM: null };
   if (location.platform === 'web')

@@ -8,12 +8,14 @@ import { env } from '../config/env';
 import { attendancePhotoDeliveryUrl, profilePhotoDeliveryUrl } from '../services/cloudinary';
 import { batchReviewSchema, reviewDatabaseError } from '../services/batchReview';
 import { cleanupFinalizedSelfies } from '../services/selfieCleanup';
+import { wakeProxyAudit } from '../services/proxyAudit';
 import { createQRTokenRecord, rotateSessionToken } from '../services/qrTokens';
 
 const router = Router();
 
 const startSessionSchema = z.object({
   classId: z.string().uuid(),
+  collectionMinutes:z.number().int().min(1).max(180).optional(),
 });
 
 router.get('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) => {
@@ -66,6 +68,8 @@ router.post('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) 
     .eq('faculty_id', user.profileId)
     .eq('status', 'ACTIVE');
 
+  void wakeProxyAudit();
+
   // Create the new session
   const { data: session, error: sessError } = await supabaseAdmin
     .from('attendance_sessions')
@@ -77,6 +81,7 @@ router.post('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) 
       end_time: cls.end_time,
       status: 'ACTIVE',
       token_rotation_count: 1,
+      submission_deadline:parsed.data.collectionMinutes ? new Date(Date.now()+parsed.data.collectionMinutes*60000).toISOString() : null,
     })
     .select()
     .single();
@@ -225,6 +230,7 @@ router.put('/:id/end', requireAuth, requireRole('faculty', 'admin'), async (req,
 
   const {data, error} = await supabaseAdmin.rpc('stop_attendance_for_review', {p_session_id:id, p_actor_id:user.profileId});
   if (error) {const failure = reviewDatabaseError(error); return res.status(failure.status).json({error:failure.error});}
+  void wakeProxyAudit();
   return res.json(data);
 });
 
@@ -239,6 +245,18 @@ router.put('/:id/confirm-review', requireAuth, requireRole('faculty','admin'), a
   if (error) {const failure = reviewDatabaseError(error); return res.status(failure.status).json({error:failure.error});}
   void cleanupFinalizedSelfies(req.params.id).catch(() => logger.warn({sessionId:req.params.id},'Selfie cleanup queued for retry'));
   return res.json({...data, selfieCleanup:'queued'});
+});
+
+router.get('/:id/audit',requireAuth,requireRole('faculty','admin'),async(req,res)=>{
+  const {data:session,error}=await supabaseAdmin.from('attendance_sessions').select('faculty_id,audit_required,status').eq('id',req.params.id).maybeSingle();
+  if(error)return res.status(503).json({error:'Could not load audit status.'});
+  if(!session)return res.status(404).json({error:'Session not found.'});
+  if(session.faculty_id!==req.user!.profileId&&req.user!.role!=='admin')return res.status(403).json({error:'Not authorized for this session.'});
+  const {data:job,error:jobError}=await supabaseAdmin.from('attendance_audit_jobs').select('status,attempts,completed_at,last_error,retry_at').eq('session_id',req.params.id).maybeSingle();
+  if(jobError)return res.status(503).json({error:'Could not load audit status.'});
+  const {data:attempts,error:attemptError}=await supabaseAdmin.from('attendance_risk_attempts').select('student_id,reason,created_at,location,student:student_id(full_name,roll_number)').eq('session_id',req.params.id).order('created_at',{ascending:false}).limit(100);
+  if(attemptError)return res.status(503).json({error:'Could not load rejected check-in signals.'});
+  return res.json({required:session.audit_required,status:job?.status || (session.status==='ACTIVE'?'collecting':'not_required'),job,blockedAttempts:attempts});
 });
 
 router.get('/:id', requireAuth, requireRole('faculty','admin'), async (req, res) => {
@@ -328,6 +346,10 @@ router.get('/:id/records', requireAuth, requireRole('faculty', 'admin'), async (
     verifiedAt: r.verified_at,
     rejectionReason: r.rejection_reason,
     checkinLocation:r.checkin_location || null,
+    auditFindings:r.audit_findings || null,
+    deviceStatus:r.device_status_at_submission || 'unknown',
+    riskReviewDecision:r.risk_review_decision || null,
+    riskReviewReason:r.risk_review_reason || null,
   }));
 
   return res.json(formatted);

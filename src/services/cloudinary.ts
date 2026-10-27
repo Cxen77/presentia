@@ -30,10 +30,10 @@ export function optimizedAvatarUrl(url: string | null | undefined, width = 256):
 }
 
 /** Upload directly with a backend signature. The API secret never enters this client. */
-export async function uploadCloudinaryImage(imageUri: string, folder: CloudinaryFolder = 'student_profiles', onProgress?: (progress: number) => void): Promise<CloudinaryUploadReceipt> {
+export async function uploadCloudinaryImage(imageUri: string, folder: CloudinaryFolder = 'student_profiles', onProgress?: (progress: number) => void, attendance?:{qrToken:string;scanTicket:string}): Promise<CloudinaryUploadReceipt> {
   if (!imageUri) throw new Error('Choose or capture a photo first.');
   onProgress?.(5);
-  const signed = await getCloudinarySignature(folder);
+  const signed = await getCloudinarySignature(folder,undefined,attendance);
   if (!signed.cloudName || !signed.apiKey || !signed.signature || !signed.publicId || signed.folder !== folder || !['upload','authenticated'].includes(signed.type)) {
     throw new Error('The backend did not return valid photo upload settings.');
   }

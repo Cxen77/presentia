@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ChevronUp, ChevronDown, Users, XCircle, MapPin, MoveVertical } from 'lucide-react';
-import { Dialog, Disclosure } from '../ui/PortalUI';
+import { CheckCircle2, ChevronUp, ChevronDown, Users, XCircle, MoveVertical } from 'lucide-react';
+import { Dialog } from '../ui/PortalUI';
+import { AuditReview } from './AuditReview';
 import type { AttendanceRecord } from '../../types';
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   preview?: boolean;
   excludedIds: ReadonlySet<string>;
   onToggleExcluded: (id:string) => void;
+  onReviewed?:()=>Promise<void>;
 };
 
 function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
@@ -19,7 +21,7 @@ function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)}/>;
 }
 
-export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmissions, preview = false, excludedIds, onToggleExcluded }: Props) {
+export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmissions, preview = false, excludedIds, onToggleExcluded, onReviewed }: Props) {
   const feedRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<string | null>(null);
   const [photoRecord, setPhotoRecord] = useState<AttendanceRecord | null>(null);
@@ -77,7 +79,7 @@ export function SubmissionReviewFeed({ records, deciding, sessionOpen, hasSubmis
             <aside className="review-student-details"><span className="review-card-position">Student {String(index + 1).padStart(2, '0')}</span><h2>{record.studentName}</h2><p className="review-usn">{record.studentRollNumber}</p><dl><div><dt>Roll no.</dt><dd>{record.studentClassRollNumber || '—'}</dd></div><div><dt>Section</dt><dd>{record.studentSection || '—'}</dd></div></dl><span className="review-student-state">{preview ? 'Design preview' : excludedIds.has(record.id) ? 'Will be absent' : 'Included in confirmation'}</span><time dateTime={record.submittedAt}>{new Date(record.submittedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></aside>
             <div className="review-student-images">
           <div className="review-photo-pair"><figure><figcaption>{preview ? "Sample profile" : "Profile photo"}</figcaption><div><button className="review-photo-expand" aria-label={`Enlarge profile and selfie for ${record.studentName}`} onClick={() => setPhotoRecord(record)}><ReviewPhoto key={record.studentAvatarUrl} src={record.studentAvatarUrl} alt={`Registered profile photo of ${record.studentName}`}/></button></div></figure><figure><figcaption>{preview ? "Sample selfie" : "Attendance selfie"}</figcaption><div><button className="review-photo-expand" aria-label={`Enlarge selfie and profile for ${record.studentName}`} onClick={() => setPhotoRecord(record)}><ReviewPhoto key={record.verificationPhotoUrl} src={record.verificationPhotoUrl} alt={`Attendance selfie of ${record.studentName}`}/></button></div></figure></div>
-          {record.checkinLocation && <Disclosure title="Location details" description={record.checkinLocation.campusRestricted ? `${record.checkinLocation.distanceM} m from campus centre` : 'Campus restriction off'}><p><MapPin size={13} className="inline"/> {record.checkinLocation.submission.platform} · GPS accuracy ±{Math.round(record.checkinLocation.submission.accuracy)} m</p><p>Mock GPS: {record.checkinLocation.submission.mocked === false ? 'not reported by device' : 'check unavailable'} · Developer Options: unavailable</p><p>Scan: {record.checkinLocation.scan.latitude.toFixed(5)}, {record.checkinLocation.scan.longitude.toFixed(5)}</p><p>Submission: {record.checkinLocation.submission.latitude.toFixed(5)}, {record.checkinLocation.submission.longitude.toFixed(5)}</p><p>Received {new Date(record.checkinLocation.receivedAt).toLocaleTimeString()}</p></Disclosure>}
+          {!preview && <AuditReview record={record} sessionOpen={sessionOpen} onReviewed={onReviewed || (async()=>{})}/>}
             </div>
           </div>
           <footer className="review-exclusion"><label><input type="checkbox" aria-label={`Mark ${record.studentName} absent`} checked={excludedIds.has(record.id)} disabled={!!deciding} onChange={() => onToggleExcluded(record.id)}/><span>{excludedIds.has(record.id) ? 'Excluded from confirmation' : 'Exclude this student'}</span></label><span>{excludedIds.has(record.id) ? <XCircle size={13}/> : <CheckCircle2 size={13}/>} {excludedIds.has(record.id) ? 'Will be absent' : 'Will be present'}</span></footer>

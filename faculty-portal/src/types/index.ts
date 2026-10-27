@@ -74,7 +74,11 @@ export interface AttendanceSession {
 export type AttendanceRecordStatus = 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED';
 
 export interface AttendanceRecord {
-  checkinLocation?:{scan:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null};submission:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null;developerOptions:string};campusRestricted:boolean;distanceM:number|null;receivedAt:number}|null;
+  auditFindings?:{status:string;deviceStatus:string;deviceConflict:boolean;mockStatus:'detected'|'not_detected'|'unknown';requiresSignalReview:boolean;reasons:string[];face:{status:string;reason:string;provider:string};auditedAt:string}|null;
+  deviceStatus?:string;
+  riskReviewDecision?:'PRESENT'|'REJECTED'|null;
+  riskReviewReason?:string|null;
+  checkinLocation?:{scan:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null}|null;submission:{latitude:number;longitude:number;accuracy:number;platform:string;mocked:boolean|null;developerOptions:string}|null;campusRestricted:boolean;distanceM:number|null;receivedAt:number}|null;
   id: string;
   sessionId: string;
   classId: string;

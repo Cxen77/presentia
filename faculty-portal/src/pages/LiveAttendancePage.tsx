@@ -8,7 +8,7 @@ import { attendanceDataService } from '../services/attendanceDataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { AttendanceSession, ClassItem, AttendanceRecord } from '../types';
 import { SubmissionReviewFeed } from '../components/attendance/SubmissionReviewFeed';
-import { downloadSessionReport, getSession, type BatchReview } from '../services/api';
+import { downloadSessionReport, getSession, getSessionAudit, type SessionAudit, type BatchReview } from '../services/api';
 import { prepareBatchReview } from '../utils/batchReview';
 import { notify } from '../services/toast';
 import { AnimatedNumber } from '../components/ui/Motion';
@@ -24,6 +24,7 @@ export const LiveAttendancePage: React.FC = () => {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [activeSession, setActiveSession] = useState<AttendanceSession | null>(null);
+  const [audit,setAudit]=useState<SessionAudit|null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(25);
   const [choices, setChoices] = useState<{sessionId:string;values:Record<string,boolean>}>({sessionId:'',values:{}});
@@ -56,6 +57,7 @@ export const LiveAttendancePage: React.FC = () => {
     if (session) {
       const sessionRecs = await attendanceDataService.getSessionRecords(session.id);
       setRecords(sessionRecs);
+      setAudit(await getSessionAudit(session.id));
     } else setRecords([]);
     setStartError(null);
     } catch(error) { setStartError(error instanceof Error ? error.message : 'Could not load attendance.'); }
@@ -96,12 +98,23 @@ export const LiveAttendancePage: React.FC = () => {
     };
   }, [activeSessionId]);
 
+  const auditRequired=audit?.required;
+  const auditStatus=audit?.status;
   useEffect(()=>{
-    if(!activeSession?.id)return;
+    if(!activeSession?.id || activeSession.finalizedAt || (activeSession.status!=='ACTIVE' && auditRequired!==undefined && (!auditRequired || auditStatus==='complete')))return;
     const id=activeSession.id;
-    const timer=setInterval(()=>{void attendanceDataService.getSessionRecords(id).then(setRecords).catch(error=>setStartError(error.message));},5000);
-    return()=>clearInterval(timer);
-  },[activeSession?.id]);
+    let active=true,inFlight=false;
+    const timer=setInterval(()=>{
+      if(inFlight)return;
+      inFlight=true;
+      void Promise.all([attendanceDataService.getSessionRecords(id),getSessionAudit(id)]).then(([records,audit])=>{
+        if(!active)return;
+        setRecords(records);setAudit(audit);
+        if(audit.status!=='collecting')setActiveSession(previous=>previous?.id===id&&previous.status==='ACTIVE'?{...previous,status:'AWAITING_VERIFICATION'}:previous);
+      }).catch(error=>{if(active)setStartError(error.message);}).finally(()=>{inFlight=false;});
+    },5000);
+    return()=>{active=false;clearInterval(timer);};
+  },[activeSession?.id,activeSession?.status,activeSession?.finalizedAt,auditRequired,auditStatus]);
 
   // Periodic QR Code Rotation & Countdown Timer (every 25 seconds)
   useEffect(() => {
@@ -163,7 +176,11 @@ export const LiveAttendancePage: React.FC = () => {
     const wasExcluded = excludedIds.has(id);
     setChoices(previous => ({sessionId:activeSession.id,values:{...(previous.sessionId === activeSession.id ? previous.values : {}),[id]:!wasExcluded}}));
   };
+  const auditBlocked=!!audit?.required && audit.status!=='complete';
+  const pendingSignalReview=records.some(r=>r.auditFindings?.requiresSignalReview && (!r.riskReviewDecision || r.riskReviewDecision!==(excludedIds.has(r.id)?'REJECTED':'PRESENT')));
+  const reviewedRecord=async()=>{if(!activeSession)return;const updated=await attendanceDataService.getSessionRecords(activeSession.id);setRecords(updated);setChoices(previous=>({sessionId:activeSession.id,values:{...(previous.sessionId===activeSession.id?previous.values:{}),...Object.fromEntries(updated.filter(r=>r.riskReviewDecision).map(r=>[r.id,r.riskReviewDecision==='REJECTED']))}}));};
   const openBatchConfirmation = () => {
+    if(auditBlocked||pendingSignalReview){setStartError('Wait for the audit and save a reason for each flagged case.');return;}
     try {setStartError(null);setReviewDraft(prepareBatchReview(records,excludedIds,crypto.randomUUID()));}
     catch(error) {setStartError(error instanceof Error ? error.message : 'Refresh the list.');}
   };
@@ -193,6 +210,13 @@ export const LiveAttendancePage: React.FC = () => {
     <PageHeading title="Live attendance" description={loading ? 'Loading your attendance session…' : activeSession ? `${activeSession.courseCode} · ${activeSession.className}` : 'Choose a class to open student check-in.'}
       action={<div className="flex flex-wrap gap-2"><button className={`p-button secondary ${refreshing ? "is-refreshing" : ""}`} disabled={refreshing} onClick={async () => {setRefreshing(true);try {await refreshData();} finally {setRefreshing(false);}}} aria-label="Refresh attendance"><RefreshCw size={14}/><span className="attendance-refresh-label">Refresh</span></button>{activeSession && <><button className="p-button secondary" disabled={exporting || !records.length} onClick={handleDownload}><FileSpreadsheet size={14}/>{exporting ? 'Downloading…' : 'Download sheet'}</button>{activeSession.status === 'ACTIVE' && <button className="p-button secondary" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End session</button>}</>}</div>}/>
     <InlineError message={startError}/>
+    {activeSession && !activeSession.finalizedAt && audit && activeSession.status!=='ACTIVE' && <div className="panel p-3 text-sm" role="status">
+      {audit.required ? audit.status==='complete' ? 'Post-session audit complete. Compare photos and review any flagged signals before confirming.' : audit.status==='failed' ? 'Audit interrupted. Saved progress will resume automatically; confirmation is paused.' : 'Post-session audit in progress. Confirmation becomes available when it finishes.' : 'Legacy session: faculty photo review.'}
+      {pendingSignalReview && <p>Some submissions need a review decision and reason.</p>}
+    </div>}
+    {audit && audit.blockedAttempts.length>0 && <Disclosure title="Blocked check-in attempts" description={`${audit.blockedAttempts.length} location verification failures`}>
+      {audit.blockedAttempts.map((attempt,index)=><p key={index}>{attempt.student?.full_name} · {attempt.student?.roll_number}: {attempt.reason}</p>)}
+    </Disclosure>}
     {loading ? <WorkbenchSkeleton /> : !activeSession ? <section className="attendance-start"><div className="attendance-start-mark"><QrCode size={28}/></div><h2>Open your class for check-in</h2><p>Students scan the code and send a selfie. You compare it with their profile photo before confirming attendance.</p><label className="field">Class<select aria-label="Class for attendance" value={selectedClassId} onChange={event => setSelectedClassId(event.target.value)}>{!classes.length && <option value="">No classes available</option>}{classes.map(cls => <option key={cls.id} value={cls.id}>{cls.courseCode} — {cls.className}</option>)}</select></label>{!classes.length && <Link to="/create-class" className="text-link">Create a class first</Link>}<button className="p-button" disabled={!selectedClassId || starting} onClick={() => void handleStartSession()}><Play size={15}/>{starting ? 'Starting…' : 'Start attendance'}</button><Disclosure title="How attendance works"><p>Share the rotating QR with your class. Review each profile photo and selfie, confirm or reject the submission, then download your sheet.</p></Disclosure></section> : <>
       <div className="attendance-session-meta"><span className="session-state"><span className={`desk-state-mark ${activeSession.status === 'ACTIVE' ? 'is-live' : ''}`}/>{activeSession.status === 'ACTIVE' ? 'Check-in open' : 'Check-in closed'}</span><span><strong>{totalEnrolled}</strong> enrolled</span><span><strong><AnimatedNumber value={records.length}/></strong> submitted</span><span className="session-room">{activeSession.room}</span></div>
       <div className="attendance-workbench">
@@ -206,8 +230,8 @@ export const LiveAttendancePage: React.FC = () => {
           <header className="batch-panel-heading"><div><h2>Photo verification</h2><p>{activeSession.status === 'ACTIVE' ? 'Submissions appear here live. Exclude anyone who should be absent.' : 'Review the list, exclude any students, then confirm the remaining class together.'}</p></div><span>{records.length} submitted</span></header>
           {activeSession.finalizedAt ? <div className="review-empty"><CheckCircle2 size={28}/><h2>Attendance confirmed</h2><p>The present and absent lists are saved. Session selfies are no longer shown.</p><Link className="p-button mt-4" to={`/reports?session=${activeSession.id}`}>Open report</Link></div> : <>
             {PreviewSubmissionReview && records.length === 0 && <div className="review-preview-notice"><span>{previewShown ? 'Design preview · sample photos, not attendance' : 'No live submissions waiting'}</span><button onClick={() => setPreviewEnabled(enabled => !enabled)}>{previewShown ? 'Show real queue' : 'Show test review'}</button></div>}
-            {PreviewSubmissionReview && previewShown ? <React.Suspense fallback={<p className="desk-loading">Loading test review…</p>}><PreviewSubmissionReview/></React.Suspense> : <SubmissionReviewFeed records={records} deciding={finalizing ? 'batch' : null} sessionOpen={activeSession.status === 'ACTIVE'} hasSubmissions={records.length > 0} excludedIds={excludedIds} onToggleExcluded={toggleExcluded}/>}
-            <footer className="batch-panel-footer"><div><strong>{records.length - excludedIds.size} to confirm<span>{excludedIds.size} excluded</span></strong><p>{previewShown ? 'The sample cannot be saved as attendance.' : 'Excluded students and students without a submission will be absent.'}</p></div>{activeSession.status === 'ACTIVE' ? <button className="p-button" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End check-in & review</button> : <button className="p-button" disabled={finalizing || previewShown} onClick={openBatchConfirmation}><CheckCircle2 size={14}/>Confirm remaining students</button>}</footer>
+            {PreviewSubmissionReview && previewShown ? <React.Suspense fallback={<p className="desk-loading">Loading test review…</p>}><PreviewSubmissionReview/></React.Suspense> : <SubmissionReviewFeed records={records} deciding={finalizing ? 'batch' : null} sessionOpen={activeSession.status === 'ACTIVE'} hasSubmissions={records.length > 0} excludedIds={excludedIds} onToggleExcluded={toggleExcluded} onReviewed={reviewedRecord}/>}
+            <footer className="batch-panel-footer"><div><strong>{records.length - excludedIds.size} to confirm<span>{excludedIds.size} excluded</span></strong><p>{previewShown ? 'The sample cannot be saved as attendance.' : 'Excluded students and students without a submission will be absent.'}</p></div>{activeSession.status === 'ACTIVE' ? <button className="p-button" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End check-in & review</button> : <button className="p-button" disabled={finalizing || previewShown || !audit || auditBlocked || pendingSignalReview} onClick={openBatchConfirmation}><CheckCircle2 size={14}/>Confirm remaining students</button>}</footer>
           </>}
         </section>
       </div>

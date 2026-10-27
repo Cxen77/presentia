@@ -2,15 +2,15 @@ import crypto from 'crypto';
 import { env } from '../config/env';
 import type { CheckInLocation } from './geofence';
 const secret = crypto.createHmac('sha256', env.CLOUDINARY_API_SECRET).update('presentia:attendance-scan:v1').digest();
-export function createScanTicket(userId: string, tokenId: string, sessionId: string, now = Date.now(), location?:CheckInLocation) {
+export function createScanTicket(userId: string, tokenId: string, sessionId: string, now = Date.now(), location?:CheckInLocation|null, installationId?:string) {
   const expiresAt = now + 3 * 60 * 1000;
-  const payload = Buffer.from(JSON.stringify({ userId, tokenId, sessionId, expiresAt, location })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ userId, tokenId, sessionId, expiresAt, location, installationId })).toString('base64url');
   return { ticket: payload + '.' + crypto.createHmac('sha256', secret).update(payload).digest('base64url'), expiresAt };
 }
 export function verifyScanTicket(ticket: string, userId: string, tokenId: string, sessionId: string, now = Date.now()) {
   return !!readScanTicket(ticket,userId,tokenId,sessionId,now);
 }
-export function readScanTicket(ticket: string, userId: string, tokenId: string, sessionId: string, now = Date.now()):{location?:CheckInLocation;expiresAt:number}|null {
+export function readScanTicket(ticket: string, userId: string, tokenId: string, sessionId: string, now = Date.now()):{location?:CheckInLocation|null;expiresAt:number;installationId?:string}|null {
   try {
     const [payload, signature, extra] = ticket.split('.');
     if (!payload || !signature || extra) return null;

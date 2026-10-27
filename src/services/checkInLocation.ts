@@ -66,10 +66,8 @@ export async function getAttendanceLocation(
           (pending = readPosition().finally(() => {
             pending = null;
           })));
-  if (result.mocked === true)
-    throw new Error(
-      'Mock location detected. Turn off mock-location apps and Developer Options, then retry with real GPS.',
-    );
+  // Preserve the actual device signal; the backend records it and applies the
+  // campus policy. Unknown and simulated fixes must never become "safe" here.
   return result;
 }
 export async function inspectGrantedLocation() {

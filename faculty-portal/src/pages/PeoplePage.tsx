@@ -1,3 +1,4 @@
+import { DeviceManagement } from '../components/DeviceManagement';
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Search,
@@ -45,6 +46,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
     [adding, setAdding] = useState(false),
     [credentials, setCredentials] = useState<FacultyCredentials | null>(null),
     [copied, setCopied] = useState(false);
+  const [deviceStudent,setDeviceStudent]=useState<ManagedPerson|null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [section, setSection] = useState("");
   const studentView = !admin || tab === "student";
@@ -282,6 +284,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
                     <div className="register-detail-bar"><span>{p.name}<small>{p.role === "student" ? "Student details" : "Faculty details"}</small></span><button className="p-button secondary small" onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={12}/>Edit details</button></div>
                     <dl className="register-facts"><div><dt>Email</dt><dd>{p.email}</dd></div><div><dt>Department</dt><dd>{p.department || "—"}</dd></div>{p.role === "student" && <><div><dt>University USN</dt><dd>{p.loginId || "—"}</dd></div><div><dt>Roll / section</dt><dd>{p.classRollNumber || "—"} / {p.section || "—"}</dd></div><div><dt>Semester</dt><dd>{p.semester || "—"}</dd></div></>}</dl>
                     {p.role === "student" && <div className="register-memberships"><h3><BookOpen size={13}/> Enrolled classes <span>{p.classes?.length || 0}</span></h3>{p.classes?.length ? <ul>{p.classes.map(c => <li key={c.id}><span>{c.code}</span><strong>{c.name}</strong><small>{c.semester}</small></li>)}</ul> : <p>No active class enrollments.</p>}</div>}
+                    {admin && p.role==="student" && <button className="p-button secondary small" onClick={()=>setDeviceStudent(p)}>Manage devices</button>}
                     {p.archivedAt && <button className="p-button secondary small" disabled={busy} onClick={() => void restore(p)}><RotateCcw size={12}/>Restore faculty access</button>}
                   </div>
                 </div>
@@ -291,6 +294,7 @@ export function PeoplePage({ admin = false }: { admin?: boolean }) {
           <div className="register-footnote">{studentView ? "Sorted by roll number" : "Select a faculty member to view details"}<span>{studentView ? "Select a row to view details" : "Account access is managed by the administrator"}</span></div>
         </section>
       )}
+      {admin && deviceStudent && <DeviceManagement student={deviceStudent} students={people.filter(p=>p.role==="student"&&!p.archivedAt)} onClose={()=>setDeviceStudent(null)}/>}
       {actionsFor && <Dialog title={`Actions for ${actionsFor.name}`} onClose={() => setActionsFor(null)}>
         <div className="account-actions">
           {actionsFor.archivedAt ? <button disabled={busy} onClick={() => {const person=actionsFor;setActionsFor(null);void restore(person);}}><RotateCcw size={18}/><span><strong>Restore faculty access</strong><small>Allow this faculty member to sign in again.</small></span></button> : <>

@@ -190,32 +190,8 @@ export { supabase, isSupabaseConfigured };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
-export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string; scanTicket: string; location:studentApi.CheckInLocation }) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  if (!token) {
-    throw new Error('Please sign in to submit attendance.');
-  }
-
-  const res = await fetch(`${API_BASE_URL}/api/attendance/submit`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!res.ok) {
-    let errorMsg = 'Failed to submit attendance';
-    try {
-      const errJson = await res.json();
-      errorMsg = errJson.error || errorMsg;
-    } catch {}
-    throw new Error(errorMsg);
-  }
-
-  return res.json();
+export async function submitAttendanceApi(data: { qrToken: string; verificationPhotoUrl: string; verificationPhotoSignature: string; scanTicket: string; location:studentApi.CheckInLocation|null }) {
+  return studentApi.submitAttendance(data);
 }
 
 
@@ -919,7 +895,7 @@ export const QRScannerModal: React.FC<{
       setDetectedAttendance(null);
     } else if (res.type === 'attendance_session' && res.attendanceToken) {
       try {
-        const location=await getAttendanceLocation();
+        const location=await getAttendanceLocation(true).catch(()=>null);
         const scan = await studentApi.validateAttendanceScan(res.attendanceToken,location);
         setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode, ...scan });
         setSelfieVisible(true); setDetectedClass(null); setNotice('QR verified. Take your selfie within three minutes.');
@@ -960,8 +936,8 @@ export const QRScannerModal: React.FC<{
     if (Date.now() >= detectedAttendance.expiresAt) throw new Error('Check-in expired. Close the camera and scan the latest QR again.');
     setSubmittingAttendance(true);
     try {
-      const receipt = await uploadCloudinaryImage(photoUri, 'attendance_verification');
-      const location=await getAttendanceLocation(true);
+      const receipt = await uploadCloudinaryImage(photoUri, 'attendance_verification',undefined,{qrToken:detectedAttendance.token,scanTicket:detectedAttendance.scanTicket});
+      const location=await getAttendanceLocation(true).catch(()=>null);
       await submitAttendanceApi({ qrToken: detectedAttendance.token, verificationPhotoUrl: receipt.url, verificationPhotoSignature: receipt.signature, scanTicket:detectedAttendance.scanTicket,location });
       setAttendanceSuccess(true);
     } finally { setSubmittingAttendance(false); }
@@ -2352,6 +2328,11 @@ export default function App() {
         if (routedUser === session.user.id) return;
         const profile = await studentService.getProfile();
         if (!active || request !== revision) return;
+        if(profile) {
+          try {await studentApi.registerInstallation();}
+          catch(error) {if(active && request===revision)Alert.alert('Device registration',error instanceof Error?error.message:'Device registration unavailable. Attendance requires registration.');}
+        }
+        if(!active || request!==revision)return;
         routedUser = session.user.id;
         setRegisteredEmail(session.user.email || '');
         setCurrentScreen(profile ? 'main' : 'profile_setup');
@@ -2432,7 +2413,7 @@ export default function App() {
           <ProfileSetupScreen
             initialEmail={registeredEmail}
             onChangeAccount={handleLogout}
-            onComplete={() => setCurrentScreen('main')}
+            onComplete={() => {void studentApi.registerInstallation().catch(error=>Alert.alert('Device registration',error.message));setCurrentScreen('main');}}
           />
         );
       case 'main':

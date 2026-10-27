@@ -115,7 +115,7 @@ export function SelfieCheckInModal({ onClose, previewMode = false, courseCode, p
             {isReview ? <UserRound size={19 * scale} color="#babdc4" strokeWidth={1.7} /> : <SwitchCamera size={20 * scale} color="#babdc4" strokeWidth={1.7} />}
           </TouchableOpacity>
         </View>
-        <Text style={s.footerHint}>{previewMode ? 'Preview only · nothing is sent' : 'Matched with your profile. Reviewed by your faculty.'}</Text>
+        <Text style={s.footerHint}>{previewMode ? 'Preview only · nothing is sent' : 'Compared with your profile by your faculty.'}</Text>
       </View>}
     </View></View>
   </Modal>;

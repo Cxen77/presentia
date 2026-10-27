@@ -225,3 +225,10 @@ export const deleteClass=(id:string)=>apiRequest(`/api/classes/${id}`,{method:'D
 export const removeEnrollment=(classId:string,studentId:string)=>apiRequest(`/api/classes/${classId}/students/${studentId}`,{method:'DELETE'});
 export const deleteFaculty=(id:string)=>apiRequest(`/api/management/faculty/${id}`,{method:'DELETE'});
 export const restoreFaculty=(id:string)=>apiRequest(`/api/management/faculty/${id}/restore`,{method:'POST'});
+
+export interface SessionAudit {required:boolean;status:'collecting'|'queued'|'running'|'failed'|'complete'|'not_required';job:{attempts:number;last_error:string|null}|null;blockedAttempts:{student_id:string;reason:string;created_at:string;student:{full_name:string;roll_number:string}}[]}
+export const getSessionAudit=(id:string)=>apiRequest<SessionAudit>(`/api/sessions/${id}/audit`);
+export interface RegisteredDevice {installation_id:string;student_id:string;platform:string;status:'active'|'revoked';registered_at:string;last_seen_at:string}
+export const getStudentDevices=(id:string)=>apiRequest<RegisteredDevice[]>(`/api/devices?studentId=${encodeURIComponent(id)}`);
+export const resolveStudentDevice=(id:string,data:{studentId:string;status:'active'|'revoked';reason:string})=>apiRequest(`/api/devices/${id}/resolve`,{method:'PUT',body:data});
+export const getDeviceConflicts=()=>apiRequest<{installation_id:string;attempted_student_id:string;attempts:number;last_seen_at:string}[]>('/api/devices/conflicts');

@@ -40,6 +40,17 @@ test('faculty delivery uses a signed URL while stored URL stays unsigned', () =>
   assert.equal(attendancePhotoDeliveryUrl('javascript:alert(1)'), '');
 });
 
+test('new selfie receipts are bound to their attendance session and cannot cross sessions',()=>{
+ const session='33333333-3333-4333-8333-333333333333';const asset=`attendance_verification/${owner}/${session}/22222222-2222-4222-8222-222222222222`;
+ const value=`https://res.cloudinary.com/test-cloud/image/authenticated/v${version}/${asset}.jpg`;
+ const signature=cloudinary.utils.api_sign_request({public_id:asset,version},'test-secret');
+ assert.equal(isOwnedAttendancePhoto(value,owner,signature,session),true);
+ assert.equal(isOwnedAttendancePhoto(value,owner,signature,'44444444-4444-4444-8444-444444444444'),false);
+ assert.equal(isOwnedAttendancePhoto(url,owner,receipt,session),false);
+ assert.ok(createUploadPayload(owner,'attendance_verification',session).publicId.startsWith(owner+'/'+session+'/'));
+ assert.match(attendancePhotoDeliveryUrl(value),/\/authenticated\/s--/);
+});
+
 test('cleanup only deletes authenticated attendance assets and requests cache invalidation', async () => {
   const original=cloudinary.uploader.destroy;const calls=[];
   cloudinary.uploader.destroy=async(...args)=>{calls.push(args);return {result:'ok'};};
