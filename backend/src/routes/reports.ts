@@ -73,7 +73,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   const recordMap = new Map((records || []).map((r: any) => [r.student_id, r]));
 
   // 5. Build roster
-  const roster = students.map((stud: any, idx: number) => {
+  const fullRoster = students.map((stud: any, idx: number) => {
     const rec = recordMap.get(stud.id) as any;
     let finalStatus: 'PRESENT' | 'ABSENT' | 'PENDING' | 'REJECTED' = 'ABSENT';
     if (rec) {
@@ -81,6 +81,16 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
     }
     return { serialNo: idx + 1, student: stud, status: finalStatus, record: rec || null };
   });
+
+  // ?filter=present|absent limits the sheet to one group; serial numbers are
+  // renumbered after filtering so each sheet stands alone.
+  const filter = String(req.query.filter || 'all').toLowerCase();
+  const roster = filter === 'present'
+    ? fullRoster.filter(item => item.status === 'PRESENT').map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+    : filter === 'absent'
+      ? fullRoster.filter(item => item.status !== 'PRESENT').map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+      : fullRoster;
+  const filterLabel = filter === 'present' ? 'PRESENT STUDENTS ONLY' : filter === 'absent' ? 'ABSENT STUDENTS ONLY' : 'ALL STUDENTS';
 
   // 6. Generate Excel
   const workbook = new ExcelJS.Workbook();
@@ -110,7 +120,7 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   titleRow.alignment = { vertical: 'middle', horizontal: 'center' };
   titleRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF061522' } };
 
-  const subRow = worksheet.addRow(['OFFICIAL CLASS ATTENDANCE REPORT & VERIFICATION LOG']);
+  const subRow = worksheet.addRow([`OFFICIAL CLASS ATTENDANCE REPORT & VERIFICATION LOG — ${filterLabel}`]);
   worksheet.mergeCells('A2:G2');
   subRow.height = 24;
   subRow.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF9AB9EC' } };
@@ -228,7 +238,8 @@ router.get('/session/:sessionId/excel', requireAuth, requireRole('faculty', 'adm
   // 7. Send the file
   const safeClassName = cls.class_name.replace(/[^a-zA-Z0-9]/g, '_');
   const safeCourseCode = cls.course_code.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `${safeCourseCode}_${safeClassName}_${session.date}_Attendance.xlsx`;
+  const filterSuffix = filter === 'present' ? '_Present' : filter === 'absent' ? '_Absent' : '';
+  const filename = `${safeCourseCode}_${safeClassName}_${session.date}_Attendance${filterSuffix}.xlsx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

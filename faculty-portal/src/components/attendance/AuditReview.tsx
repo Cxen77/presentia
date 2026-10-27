@@ -15,7 +15,7 @@ export function AuditReview({record,sessionOpen,onReviewed}:{record:AttendanceRe
     catch(error){setError(error instanceof Error?error.message:'Could not save review.');}
     finally{setBusy(false);}
   };
-  return <Disclosure title={findings?.requiresSignalReview ? 'Signal review required' : 'Verification details'} description={findings ? `${findings.deviceStatus.replace(/_/g,' ')} · Location: ${findings.mockStatus.replace(/_/g,' ')}` : 'Post-session audit pending'}>
+  return <Disclosure title={findings?.requiresSignalReview ? 'Check-in signals — optional review' : 'Verification details'} description={findings ? `${findings.deviceStatus.replace(/_/g,' ')} · Location: ${findings.mockStatus.replace(/_/g,' ')}` : 'Post-session audit pending'}>
     <p>Registered device: {findings?.deviceStatus.replace(/_/g,' ') || record.deviceStatus || 'unknown'}</p>
     <p>Mock location: {findings?.mockStatus==='detected'?'detected':findings?.mockStatus==='not_detected'?'not detected by device':'unknown'}</p>
     {findings?.deviceConflict && <p role="note">Device ownership conflict requires review.</p>}
@@ -26,7 +26,7 @@ export function AuditReview({record,sessionOpen,onReviewed}:{record:AttendanceRe
       {record.checkinLocation.submission && <p>Submission: {record.checkinLocation.submission.latitude.toFixed(5)}, {record.checkinLocation.submission.longitude.toFixed(5)} · {record.checkinLocation.submission.platform}</p>}
       <p>Received: {new Date(record.checkinLocation.receivedAt).toLocaleString()}</p>
     </>}
-    <p>These are risk signals, not proof of fraud or liveness.</p>
+    <p>These are advisory risk signals — reviewing them is optional and never blocks attendance submission.</p>
     {record.riskReviewDecision && <p>Reviewed: {record.riskReviewDecision==='PRESENT'?'confirmed':'rejected'} · {record.riskReviewReason}</p>}
     {findings?.requiresSignalReview && !sessionOpen && <div className="space-y-2 mt-2">
       <label className="field">Review reason<textarea aria-describedby={`audit-error-${record.id}`} value={reason} onChange={event=>setReason(event.target.value)} minLength={5} maxLength={500} rows={2}/></label>

@@ -462,6 +462,18 @@ input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
 .is-refreshing>svg { animation:refresh-turn 800ms linear infinite; }
 @keyframes refresh-turn { to { transform:rotate(360deg); } }
 
+/* Report action tabs, bulk submit toggles, download row. */
+.report-tabs { display:flex; gap:18px; border-bottom:1px solid var(--border); margin:4px 0 14px; }
+.report-tabs>button { display:flex; align-items:center; gap:7px; padding:10px 2px; font-size:12.5px; font-weight:550; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; }
+.report-tabs>button.is-selected { color:var(--text); border-bottom-color:var(--accent); }
+.bulk-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.submit-toggle { display:inline-flex; border:1px solid var(--border); border-radius:999px; overflow:hidden; }
+.submit-toggle>button { padding:5px 12px; font-size:11px; font-weight:550; color:var(--muted); background:transparent; border:0; }
+.submit-toggle>button+button { border-left:1px solid var(--border); }
+.submit-toggle>button[aria-pressed="true"] { background:var(--accent-soft); color:var(--text); }
+.submit-toggle>button:disabled { opacity:.4; cursor:not-allowed; }
+.submit-note { display:block; color:var(--subtle); font-size:10px; margin-top:3px; }
+
 .decision-result { display:grid; gap:5px; justify-items:end; }
 .decision-result time { color:var(--subtle); font-size:10px; font-variant-numeric:tabular-nums; }
 

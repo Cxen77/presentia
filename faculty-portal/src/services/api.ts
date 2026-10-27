@@ -161,8 +161,9 @@ export async function verifyAttendance(
 // REPORTS
 // =============================================================================
 
-export async function downloadSessionReport(sessionId: string): Promise<void> {
-  const res = await authenticatedRequest(supabase.auth,token => fetch(`${API_BASE_URL}/api/reports/session/${sessionId}/excel`, {
+export async function downloadSessionReport(sessionId: string, filter: 'all' | 'present' | 'absent' = 'all'): Promise<void> {
+  const query = filter !== 'all' ? `?filter=${filter}` : '';
+  const res = await authenticatedRequest(supabase.auth,token => fetch(`${API_BASE_URL}/api/reports/session/${sessionId}/excel${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   }));
 

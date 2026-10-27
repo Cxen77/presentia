@@ -160,7 +160,7 @@ export const LiveAttendancePage: React.FC = () => {
   const handleEndSession = async () => {
     if (!activeSession || ending) return;
     setEnding(true);
-    try {const updated=await attendanceDataService.endSession(activeSession.id);setActiveSession(previous=>previous ? {...previous,...updated} : previous);setConfirmEndModal(false);await refreshData();notify.info('Check-in closed','Review the submissions, then confirm the class.');}
+    try {const updated=await attendanceDataService.endSession(activeSession.id);setActiveSession(previous=>previous ? {...previous,...updated} : previous);setConfirmEndModal(false);await refreshData();notify.info('Check-in closed','Opening the report — review photos or submit the class.');navigate(`/reports?session=${activeSession.id}`);}
     catch(error){setStartError(error instanceof Error?error.message:'Could not end session.');setConfirmEndModal(false);}
     finally {setEnding(false);}
   };
@@ -176,12 +176,15 @@ export const LiveAttendancePage: React.FC = () => {
     const wasExcluded = excludedIds.has(id);
     setChoices(previous => ({sessionId:activeSession.id,values:{...(previous.sessionId === activeSession.id ? previous.values : {}),[id]:!wasExcluded}}));
   };
-  const auditBlocked=!!audit?.required && audit.status!=='complete';
-  const pendingSignalReview=records.some(r=>r.auditFindings?.requiresSignalReview && (!r.riskReviewDecision || r.riskReviewDecision!==(excludedIds.has(r.id)?'REJECTED':'PRESENT')));
+  const auditBlocked=false; // Signal review is advisory (migration 009): it never blocks submission.
+  const pendingSignalReview=false;
   const reviewedRecord=async()=>{if(!activeSession)return;const updated=await attendanceDataService.getSessionRecords(activeSession.id);setRecords(updated);setChoices(previous=>({sessionId:activeSession.id,values:{...(previous.sessionId===activeSession.id?previous.values:{}),...Object.fromEntries(updated.filter(r=>r.riskReviewDecision).map(r=>[r.id,r.riskReviewDecision==='REJECTED']))}}));};
   const openBatchConfirmation = () => {
-    if(auditBlocked||pendingSignalReview){setStartError('Wait for the audit and save a reason for each flagged case.');return;}
     try {setStartError(null);setReviewDraft(prepareBatchReview(records,excludedIds,crypto.randomUUID()));}
+    catch(error) {setStartError(error instanceof Error ? error.message : 'Refresh the list.');}
+  };
+  const quickConfirmAllPresent = () => {
+    try {setStartError(null);setReviewDraft(prepareBatchReview(records,new Set(),crypto.randomUUID()));}
     catch(error) {setStartError(error instanceof Error ? error.message : 'Refresh the list.');}
   };
   const confirmClass = async () => {
@@ -201,9 +204,8 @@ export const LiveAttendancePage: React.FC = () => {
     <PageHeading title="Live attendance" description={loading ? 'Loading your attendance session…' : activeSession ? `${activeSession.courseCode} · ${activeSession.className}` : 'Choose a class to open student check-in.'}
       action={<div className="flex flex-wrap gap-2"><button className={`p-button secondary ${refreshing ? "is-refreshing" : ""}`} disabled={refreshing} onClick={async () => {setRefreshing(true);try {await refreshData();} finally {setRefreshing(false);}}} aria-label="Refresh attendance"><RefreshCw size={14}/><span className="attendance-refresh-label">Refresh</span></button>{activeSession && <><button className="p-button secondary" disabled={exporting || !records.length} onClick={handleDownload}><FileSpreadsheet size={14}/>{exporting ? 'Downloading…' : 'Download sheet'}</button>{activeSession.status === 'ACTIVE' && <button className="p-button secondary" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End session</button>}</>}</div>}/>
     <InlineError message={startError}/>
-    {activeSession && !activeSession.finalizedAt && audit && activeSession.status!=='ACTIVE' && <div className="panel p-3 text-sm" role="status">
-      {audit.required ? audit.status==='complete' ? 'Post-session audit complete. Compare photos and review any flagged signals before confirming.' : audit.status==='failed' ? 'Audit interrupted. Saved progress will resume automatically; confirmation is paused.' : 'Post-session audit in progress. Confirmation becomes available when it finishes.' : 'Legacy session: faculty photo review.'}
-      {pendingSignalReview && <p>Some submissions need a review decision and reason.</p>}
+    {activeSession && !activeSession.finalizedAt && activeSession.status!=='ACTIVE' && <div className="panel p-3 text-sm" role="status">
+      Check-in closed. Photo review is <strong>optional</strong> — check-in signals (location, device) are advisory and never block submission. Open the report to review photos or submit the class.
     </div>}
     {audit && audit.blockedAttempts.length>0 && <Disclosure title="Blocked check-in attempts" description={`${audit.blockedAttempts.length} location verification failures`}>
       {audit.blockedAttempts.map((attempt,index)=><p key={index}>{attempt.student?.full_name} · {attempt.student?.roll_number}: {attempt.reason}</p>)}
@@ -220,15 +222,16 @@ export const LiveAttendancePage: React.FC = () => {
         <section className="review-workspace batch-verification-panel" aria-label="Photo verification">
           <header className="batch-panel-heading"><div><h2>Photo verification</h2><p>{activeSession.status === 'ACTIVE' ? 'Submissions appear here live. Exclude anyone who should be absent.' : 'Review the list, exclude any students, then confirm the remaining class together.'}</p></div><span>{records.length} submitted</span></header>
           {activeSession.finalizedAt ? <div className="review-empty"><CheckCircle2 size={28}/><h2>Attendance confirmed</h2><p>The present and absent lists are saved. Session selfies are no longer shown.</p><Link className="p-button mt-4" to={`/reports?session=${activeSession.id}`}>Open report</Link></div> : <>
+            {activeSession.status !== 'ACTIVE' && <div className="report-cleanup-status" style={{paddingBottom:12}}><CheckCircle2 size={14}/>Check-in closed with {records.length} submissions. Review photos below (optional), then confirm — or open the report to submit.</div>}
             {PreviewSubmissionReview && records.length === 0 && <div className="review-preview-notice"><span>{previewShown ? 'Design preview · sample photos, not attendance' : 'No live submissions waiting'}</span><button onClick={() => setPreviewEnabled(enabled => !enabled)}>{previewShown ? 'Show real queue' : 'Show test review'}</button></div>}
             {PreviewSubmissionReview && previewShown ? <React.Suspense fallback={<p className="desk-loading">Loading test review…</p>}><PreviewSubmissionReview/></React.Suspense> : <SubmissionReviewFeed records={records} deciding={finalizing ? 'batch' : null} sessionOpen={activeSession.status === 'ACTIVE'} hasSubmissions={records.length > 0} excludedIds={excludedIds} onToggleExcluded={toggleExcluded} onReviewed={reviewedRecord}/>}
-            <footer className="batch-panel-footer"><div><strong>{records.length - excludedIds.size} to confirm<span>{excludedIds.size} excluded</span></strong><p>{previewShown ? 'The sample cannot be saved as attendance.' : 'Excluded students and students without a submission will be absent.'}</p></div>{activeSession.status === 'ACTIVE' ? <button className="p-button" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End check-in & review</button> : <button className="p-button" disabled={finalizing || previewShown || !audit || auditBlocked || pendingSignalReview} onClick={openBatchConfirmation}><CheckCircle2 size={14}/>Confirm remaining students</button>}</footer>
+            <footer className="batch-panel-footer"><div><strong>{records.length - excludedIds.size} present<span>{excludedIds.size} marked absent</span></strong><p>{previewShown ? 'The sample cannot be saved as attendance.' : 'Students without a submission will be absent.'}</p></div>{activeSession.status === 'ACTIVE' ? <button className="p-button" onClick={() => setConfirmEndModal(true)}><StopCircle size={14}/>End check-in & review</button> : <div className="flex flex-wrap gap-2"><Link className="p-button secondary" to={`/reports?session=${activeSession.id}`}>Open report & submit</Link><button className="p-button" disabled={finalizing || previewShown} onClick={openBatchConfirmation}><CheckCircle2 size={14}/>Confirm as marked</button></div>}</footer>
           </>}
         </section>
       </div>
     </>}
     {projectQR && activeSession && <Dialog title={activeSession.courseCode + ' check-in'} onClose={() => setProjectQR(false)}><div className="projected-qr">{activeSession.status === 'ACTIVE' ? <AttendanceQRCode token={activeSession.currentToken} courseCode={activeSession.courseCode} size={460}/> : <p>Scanning is closed.</p>}<p>{activeSession.className}</p><span>Scan with the student app</span></div></Dialog>}
     {reviewDraft && <Dialog title="Confirm class attendance?" onClose={() => {if(!finalizing)setReviewDraft(null);}}><InlineError message={startError}/><div className="batch-confirm-counts"><span><strong>{reviewDraft.expectedRecords.length - reviewDraft.excludedRecordIds.length}</strong>Present</span><span><strong>{reviewDraft.excludedRecordIds.length}</strong>Excluded / absent</span></div><p className="review-dialog-copy">Students without a submission will also be absent. Attendance decisions will be saved together.</p><p className="review-dialog-copy">Session selfies will be permanently deleted after confirmation. Student profile photos and attendance history will remain.</p><div className="review-dialog-actions"><button className="p-button secondary" disabled={finalizing} onClick={() => setReviewDraft(null)}>Back to review</button><button className="p-button" disabled={finalizing} onClick={() => void confirmClass()}>{finalizing ? 'Confirming class…' : 'Confirm class & delete selfies'}</button></div></Dialog>}
-    {confirmEndModal && <Dialog title="End check-in and review?" onClose={() => {if(!ending)setConfirmEndModal(false);}}><p className="review-dialog-copy">Students will no longer be able to submit. You can review all photos and exclude students before confirming the class.</p><div className="review-dialog-actions"><button className="p-button secondary" disabled={ending} onClick={() => setConfirmEndModal(false)}>Keep session open</button><button className="p-button" disabled={ending} onClick={() => void handleEndSession()}>{ending ? 'Ending…' : 'End check-in & review'}<ChevronRight size={14}/></button></div></Dialog>}
+    {confirmEndModal && <Dialog title="End check-in?" onClose={() => {if(!ending)setConfirmEndModal(false);}}><p className="review-dialog-copy">Students will no longer be able to submit. You'll go straight to the report — review photos (optional) or submit the class there.</p><div className="review-dialog-actions"><button className="p-button secondary" disabled={ending} onClick={() => setConfirmEndModal(false)}>Keep session open</button><button className="p-button" disabled={ending} onClick={() => void handleEndSession()}>{ending ? 'Ending…' : 'End check-in & open report'}<ChevronRight size={14}/></button></div></Dialog>}
   </div>;
 };
