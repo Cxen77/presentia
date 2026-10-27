@@ -23,6 +23,7 @@ import { StudentClassCard } from './StudentClassCard';
 import { AttendanceSkeleton, ClassCardSkeleton } from './Skeleton';
 import { classCardStatus } from '../services/attendanceCalendar';
 import { getAttendanceAlerts } from '../services/studentCache';
+import { Colors } from '../theme/colors';
 const statusText = (status?: string) =>
   status === 'PRESENT'
     ? 'Confirmed present'
@@ -140,8 +141,12 @@ export function StudentClassesView() {
 }
 export function StudentAttendanceView() {
   const query = useStudentQuery('attendance', getMyAttendanceRecords, [], 45000);
+  const [filter, setFilter] = useState('ALL');
+  const [expanded, setExpanded] = useState<string | null>(null);
   const present = query.data.filter((item) => item.status === 'PRESENT').length;
   const pending = query.data.filter((item) => item.status === 'PENDING').length;
+  const rejected = query.data.filter((item) => item.status === 'REJECTED').length;
+  const records = [...query.data].filter(item => filter === 'ALL' || item.status === filter).sort((a,b) => b.submittedAt.localeCompare(a.submittedAt));
   return (
     <ScrollView
       contentContainerStyle={s.screen}
@@ -157,7 +162,7 @@ export function StudentAttendanceView() {
       <View style={s.headingRow}>
         <View>
           <Text style={s.heading}>Attendance</Text>
-          <Text style={s.subtitle}>Your check-ins and faculty decisions.</Text>
+          <Text style={s.subtitle}>Every check-in. Every decision.</Text>
         </View>
         <RefreshButton onPress={query.refresh} busy={query.refreshing} />
       </View>
@@ -172,7 +177,15 @@ export function StudentAttendanceView() {
           <Text style={s.statNumber}>{pending}</Text>
           <Text style={s.body}>Awaiting review</Text>
         </View>
+        <View style={s.stat}>
+          <Text style={s.statNumber}>{rejected}</Text>
+          <Text style={s.body}>Rejected</Text>
+        </View>
       </View>
+      <View style={s.historyHeading}><Text style={s.title}>Check-in history</Text><Text style={s.body}>{query.data.length} records</Text></View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
+        {[['ALL','All'],['PRESENT','Present'],['PENDING','Pending'],['REJECTED','Rejected']].map(([value,label]) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{selected:filter===value}} onPress={() => setFilter(value)} style={[s.filter,filter===value&&s.filterActive]}><Text style={[s.filterText,filter===value&&s.filterTextActive]}>{label}</Text></TouchableOpacity>)}
+      </ScrollView>
       {!query.loading && !query.data.length && !query.error && (
         <View style={s.empty}>
           <CheckCircle2 size={28} color="#839ebc" />
@@ -183,16 +196,18 @@ export function StudentAttendanceView() {
           </Text>
         </View>
       )}
-      <View style={{ gap: 12 }}>
-        {query.data.map((item) => (
+      {!query.loading && query.data.length > 0 && !records.length && <View style={s.empty}><Text style={s.title}>No {filter.toLowerCase()} check-ins</Text><Text style={s.body}>Try another filter to see your records.</Text></View>}
+      <View style={{ gap: 10 }}>
+        {records.map((item) => (
           <View key={item.id} style={s.card}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`${item.courseCode}, ${statusText(item.status)}. ${expanded===item.id?'Hide':'Show'} details`} accessibilityState={{expanded:expanded===item.id}} onPress={() => setExpanded(expanded===item.id?null:item.id)} activeOpacity={0.7}>
             <View style={s.cardTop}>
-              <Text style={s.courseCode}>{item.courseCode}</Text>
+              <View style={s.courseBadge}><Text style={s.courseCode}>{item.courseCode}</Text></View>
               <Text style={[s.status, { color: statusColor(item.status) }]}>
                 {statusText(item.status)}
               </Text>
             </View>
-            <Text style={s.courseTitle}>{item.className}</Text>
+            <Text style={s.courseTitle} numberOfLines={expanded===item.id?undefined:1}>{item.className}</Text>
             <Text style={s.body}>
               {item.date} · submitted{' '}
               {new Date(item.submittedAt).toLocaleTimeString([], {
@@ -200,6 +215,9 @@ export function StudentAttendanceView() {
                 minute: '2-digit',
               })}
             </Text>
+            <Text style={s.expandHint}>{expanded===item.id?'Hide details −':'View details +'}</Text>
+            </TouchableOpacity>
+            {expanded===item.id && <View style={s.recordDetails}>
             {item.status === 'PENDING' && (
               <Text style={s.note}>
                 Your selfie was sent. Your teacher still needs to review it.
@@ -213,6 +231,8 @@ export function StudentAttendanceView() {
             {item.rejectionReason && (
               <Text style={s.error}>{item.rejectionReason}</Text>
             )}
+            <TouchableOpacity accessibilityRole="button" onPress={() => router.push(`/classes/${item.classId}`)} style={s.calendarLink}><BookOpen size={15} color={Colors.textBrightBlue}/><Text style={s.detailsLabel}>Open class calendar →</Text></TouchableOpacity>
+            </View>}
           </View>
         ))}
       </View>
@@ -293,6 +313,15 @@ export function AttendanceDecisionNotice() {
   );
 }
 const s = StyleSheet.create({
+  historyHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:6},
+  filters:{gap:8,paddingVertical:14},
+  filter:{minHeight:44,paddingHorizontal:16,justifyContent:'center',borderRadius:22,borderWidth:1,borderColor:Colors.borderSubtle,backgroundColor:Colors.backgroundSecondary},
+  filterActive:{backgroundColor:Colors.textBrightBlue,borderColor:Colors.textBrightBlue},
+  filterText:{fontSize:12,fontWeight:'600',color:Colors.textSecondary},
+  filterTextActive:{color:Colors.textDarkNavy},
+  expandHint:{color:Colors.textAccentBlue,fontSize:11,marginTop:9},
+  recordDetails:{marginTop:12,borderTopWidth:1,borderTopColor:Colors.borderSubtle},
+  calendarLink:{minHeight:44,flexDirection:'row',alignItems:'center',gap:8,marginTop:8},
   screen: { padding: 22, paddingTop: 25, paddingBottom: 110 },
   headingRow: {
     flexDirection: 'row',
@@ -315,18 +344,18 @@ const s = StyleSheet.create({
   updated: { fontSize: 10, color: '#7f96b2', marginTop: 14 },
   error: { fontSize: 12, color: '#f5a6aa', lineHeight: 18, marginTop: 10 },
   card: {
-    backgroundColor: '#112033',
+    backgroundColor: Colors.cardInput,
     borderWidth: 1,
     borderColor: '#263c55',
     borderRadius: 18,
-    padding: 17,
+    padding: 14,
   },
   cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   courseBadge: {
     backgroundColor: '#20314b',
@@ -392,18 +421,14 @@ const s = StyleSheet.create({
     marginTop: 25,
   },
   title: { color: '#dce8fa', fontSize: 15, fontWeight: '600' },
-  stats: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 18 },
+  stats: { flexDirection: 'row', gap: 0, marginTop: 20, marginBottom: 22, backgroundColor:Colors.cardInput,borderRadius:20,borderWidth:1,borderColor:Colors.borderSubtle,overflow:'hidden' },
   stat: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#263c55',
-    borderRadius: 14,
-    padding: 16,
-    backgroundColor: '#112033',
+    padding: 12,
   },
   statNumber: {
     color: '#deebff',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
     marginBottom: 4,
   },

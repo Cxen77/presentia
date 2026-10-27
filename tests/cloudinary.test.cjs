@@ -35,7 +35,7 @@ function uploader(uploadResult, signatureError, options={}) {
       if(name==='expo-image-manipulator') return {SaveFormat:{JPEG:'jpeg'},manipulateAsync:async uri=>{if(options.resizeFails)throw new Error('resize failed');return {uri};}};
       if(name==='expo-file-system') return {File:NativeFile};
       if(name==='expo/fetch') return {fetch:transport};
-      if(name==='./api') return {getCloudinarySignature:async()=>{if(signatureError)throw new Error(signatureError);return signed;}};
+      if(name==='./api') return {getCloudinarySignature:async()=>{if(signatureError)throw new Error(signatureError);return options.signed||signed;}};
       throw new Error(name);
     },
     fetch:transport,
@@ -90,4 +90,15 @@ test('native photos that are missing, empty, oversized or non-images never start
     await assert.rejects(upload('file:///camera/original.jpg','attendance_verification'),message);
     assert.equal(calls.length,0);
   }
+});
+
+test('Android profile photos use the same supported multipart bytes and public profile signature',async()=>{
+  const profileSigned={...signed,folder:'student_profiles',type:'upload'};
+  const {upload,calls}=uploader({ok:true,json:async()=>({secure_url:'https://res.cloudinary.com/test-cloud/image/upload/v123/student_profiles/owner/asset.jpg',public_id:'student_profiles/owner/asset',signature:'a'.repeat(40)})},null,{platform:'android',signed:profileSigned});
+  const receipt=await upload('file:///gallery/profile.jpg','student_profiles');
+  const body=Buffer.from(calls[0].encoded.body);
+  assert.ok(body.includes(Buffer.from(photoBytes)));
+  assert.ok(body.toString().includes('name="folder"\r\n\r\nstudent_profiles'));
+  assert.ok(body.toString().includes('name="type"\r\n\r\nupload'));
+  assert.equal(receipt.url,'https://res.cloudinary.com/test-cloud/image/upload/v123/student_profiles/owner/asset.jpg');
 });

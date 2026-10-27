@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Image, Modal, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import {SelfieSubmissionCard} from './SelfieSubmissionCard';
+import { Colors } from '../theme/colors';
 import Svg, { Path } from 'react-native-svg';
 import { ArrowUp, Camera, RotateCcw, Sun, SunMoon, SwitchCamera, UserRound, X } from 'lucide-react-native';
 
@@ -90,12 +91,12 @@ export function SelfieCheckInModal({ onClose, previewMode = false, courseCode, p
       <View style={s.cameraArea}>
         {sent ? <SelfieSubmissionCard photoUri={photoUri} courseCode={courseCode} preview={previewMode} onDone={close}/> : <>
           <View testID="selfie-camera-contour" style={[s.cameraWindow, { width: frameWidth * .83, height: frameWidth * .83 * 1.000611 }]}>
-            {sample ? <Image source={sampleSource} style={[StyleSheet.absoluteFill, s.fullImage, s.sampleImage]} resizeMode="cover" /> : photoUri ? <Image source={{ uri: photoUri }} style={[StyleSheet.absoluteFill, s.fullImage]} resizeMode="cover" /> : cameraEnabled && permission?.granted && foreground ? <CameraView key={facing} ref={camera} style={StyleSheet.absoluteFill} facing={facing} mirror={facing === 'front'} mute mode="picture" onCameraReady={() => setReady(true)} onMountError={() => { setReady(false); setError('Your camera could not start. Check that another app is not using it.'); }} /> : <View style={s.cameraPlaceholder}><View style={s.faceOutline}><UserRound size={88 * scale} color="#33373d" strokeWidth={.7} /></View><TouchableOpacity accessibilityRole="button" onPress={enableCamera} style={s.enableButton}><Camera size={15} color="#17191b" /><Text style={s.enableText}>Enable camera</Text></TouchableOpacity></View>}
+            {sample ? <Image source={sampleSource} style={[StyleSheet.absoluteFill, s.fullImage, s.sampleImage]} resizeMode="cover" /> : photoUri ? <Image source={{ uri: photoUri }} style={[StyleSheet.absoluteFill, s.fullImage]} resizeMode="cover" /> : cameraEnabled && permission?.granted && foreground ? <CameraView key={facing} ref={camera} style={StyleSheet.absoluteFill} facing={facing} mirror={facing === 'front'} mute mode="picture" onCameraReady={() => setReady(true)} onMountError={() => { setReady(false); setError('Your camera could not start. Check that another app is not using it.'); }} /> : <View style={s.cameraPlaceholder}><View style={s.faceOutline}><UserRound size={88 * scale} color={Colors.textMuted} strokeWidth={.7} /></View><TouchableOpacity accessibilityRole="button" onPress={enableCamera} style={s.enableButton}><Camera size={15} color="#17191b" /><Text style={s.enableText}>Enable camera</Text></TouchableOpacity></View>}
             {sample && <View style={s.sampleLabel}><Text style={s.sampleLabelText}>SAMPLE PHOTO · NOT UPLOADED</Text></View>}
             {profileOpen && <View style={s.profilePeek}><Text style={s.peekTitle}>Your profile photo</Text>{profileSource ? <Image source={profileSource} style={s.peekPhoto} /> : <UserRound size={42} color="#a9adb6" />}<Text style={s.peekCaption}>Your faculty compares this with your selfie.</Text></View>}
             {busy && <View style={s.captureBusy}><ActivityIndicator color="#fff" /></View>}
             <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 200 200.122" preserveAspectRatio="none" aria-hidden>
-              <Path d={`M-2 -2 H202 V202.122 H-2 Z ${SELFIE_FRAME_PATH}`} fill="#030303" fillRule="evenodd" />
+              <Path d={`M-2 -2 H202 V202.122 H-2 Z ${SELFIE_FRAME_PATH}`} fill={Colors.background} fillRule="evenodd" />
             </Svg>
           </View>
           <Text style={[s.cameraCaption, { fontSize: 11 * scale }]}>{isReview ? 'Clear face. Good light. All you.' : 'A quick selfie. Then you’re in.'}</Text>
@@ -121,25 +122,25 @@ export function SelfieCheckInModal({ onClose, previewMode = false, courseCode, p
   </Modal>;
 }
 const s = StyleSheet.create({
-  backdrop:{ flex:1, backgroundColor:'#080b10', alignItems:'center', justifyContent:'center' },
-  frame:{ backgroundColor:'#030303', overflow:'hidden', borderRadius:Platform.OS === 'web' ? 30 : 0, borderWidth:Platform.OS === 'web' ? 1 : 0, borderColor:'#25262b' },
+  backdrop:{ flex:1, backgroundColor:Colors.backgroundDark, alignItems:'center', justifyContent:'center' },
+  frame:{ backgroundColor:Colors.background, overflow:'hidden', borderRadius:Platform.OS === 'web' ? 30 : 0, borderWidth:Platform.OS === 'web' ? 1 : 0, borderColor:Colors.borderSubtle },
   litFrame:{ borderColor:'#fff1d0', borderWidth:9 },
   topbar:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', minHeight:64 },
   iconButton:{ width:38, height:38, alignItems:'center', justifyContent:'center' },
-  headerText:{ alignItems:'center', flex:1 }, title:{ color:'#f6f6f7', fontWeight:'600', letterSpacing:.1 }, headerSubtitle:{ color:'#797b83', marginTop:5 },
+  headerText:{ alignItems:'center', flex:1 }, title:{ color:'#f6f6f7', fontWeight:'600', letterSpacing:.1 }, headerSubtitle:{ color:Colors.textSecondary, marginTop:5 },
   profileButton:{ width:38, height:38, justifyContent:'center', alignItems:'center' }, profileThumb:{ width:23, height:23, borderRadius:8, borderWidth:1, borderColor:'#3a3d43' },
   previewBadge:{ alignSelf:'center', flexDirection:'row', alignItems:'center', gap:5, marginTop:5 }, previewDot:{ width:4, height:4, borderRadius:2, backgroundColor:'#8f928b' }, previewBadgeText:{ color:'#696b73', fontSize:7, fontWeight:'600', letterSpacing:1.5 },
-  cameraArea:{ flex:1, justifyContent:'center', alignItems:'center', paddingTop:12 }, cameraWindow:{ overflow:'hidden', backgroundColor:'#111214' }, fullImage:{ width:'100%', height:'100%' }, sampleImage:{ transform:[{scale:1.35}] },
-  cameraPlaceholder:{ flex:1, alignItems:'center', justifyContent:'center', gap:25, backgroundColor:'#111214' }, faceOutline:{ width:145, height:170, borderWidth:1, borderColor:'#292c32', borderRadius:65, justifyContent:'center', alignItems:'center' },
+  cameraArea:{ flex:1, justifyContent:'center', alignItems:'center', paddingTop:12 }, cameraWindow:{ overflow:'hidden', backgroundColor:Colors.cardInput }, fullImage:{ width:'100%', height:'100%' }, sampleImage:{ transform:[{scale:1.35}] },
+  cameraPlaceholder:{ flex:1, alignItems:'center', justifyContent:'center', gap:25, backgroundColor:Colors.cardInput }, faceOutline:{ width:145, height:170, borderWidth:1, borderColor:Colors.borderInputFocused, borderRadius:65, justifyContent:'center', alignItems:'center' },
   enableButton:{ flexDirection:'row', gap:7, backgroundColor:'#ececef', paddingHorizontal:14, paddingVertical:9, borderRadius:20 }, enableText:{ color:'#17191b', fontSize:11, fontWeight:'600' },
   sampleLabel:{ position:'absolute', bottom:13, alignSelf:'center', backgroundColor:'#0009', paddingVertical:5, paddingHorizontal:9, borderRadius:20 }, sampleLabelText:{ color:'#e0e0e2', fontSize:7, letterSpacing:1.05 },
-  cameraCaption:{ color:'#777a83', marginTop:18, letterSpacing:.1 }, tryCamera:{ flexDirection:'row', gap:5, padding:9, alignItems:'center', marginTop:2 }, tryCameraText:{ color:'#9b9da3', fontSize:9 },
+  cameraCaption:{ color:Colors.textSecondary, marginTop:18, letterSpacing:.1 }, tryCamera:{ flexDirection:'row', gap:5, padding:9, alignItems:'center', marginTop:2 }, tryCameraText:{ color:Colors.textSecondary, fontSize:9 },
   bottomArea:{ alignItems:'center', paddingHorizontal:22 }, controls:{ flexDirection:'row', justifyContent:'center', alignItems:'center', marginTop:10 },
-  sideControl:{ width:39, height:39, borderRadius:20, justifyContent:'center', alignItems:'center', backgroundColor:'#1d1f23' }, sideControlActive:{ backgroundColor:'#fff1d0' },
-  shutterColumn:{ alignItems:'center', position:'relative' }, shutterOuter:{ borderWidth:4, borderColor:'#303238', justifyContent:'center', alignItems:'center', backgroundColor:'#090a0c' }, shutterInner:{ backgroundColor:'#fafafa', justifyContent:'center', alignItems:'center' },
+  sideControl:{ width:39, height:39, borderRadius:20, justifyContent:'center', alignItems:'center', backgroundColor:Colors.cardElevated }, sideControlActive:{ backgroundColor:'#fff1d0' },
+  shutterColumn:{ alignItems:'center', position:'relative' }, shutterOuter:{ borderWidth:4, borderColor:Colors.borderInputFocused, justifyContent:'center', alignItems:'center', backgroundColor:Colors.backgroundSecondary }, shutterInner:{ backgroundColor:Colors.textBrightBlue, justifyContent:'center', alignItems:'center' },
   disabledShutter:{ opacity:.35 }, dimmed:{ opacity:.4 }, sendLabel:{ position:'absolute', bottom:-18, color:'#b0b2ba', fontSize:9, width:100, textAlign:'center' },
-  footerHint:{ color:'#5d6069', fontSize:8, marginTop:12, textAlign:'center', lineHeight:12 },
-  profilePeek:{ ...StyleSheet.absoluteFill, backgroundColor:'#08090beF', alignItems:'center', justifyContent:'center', padding:25 }, peekTitle:{ color:'#fff', fontSize:13, fontWeight:'600', marginBottom:18 }, peekPhoto:{ width:102, height:102, borderRadius:38 }, peekCaption:{ color:'#979ba6', fontSize:11, textAlign:'center', lineHeight:17, marginTop:18 },
+  footerHint:{ color:Colors.textMuted, fontSize:10, marginTop:12, textAlign:'center', lineHeight:12 },
+  profilePeek:{ ...StyleSheet.absoluteFill, backgroundColor:Colors.backgroundSecondary, alignItems:'center', justifyContent:'center', padding:25 }, peekTitle:{ color:'#fff', fontSize:13, fontWeight:'600', marginBottom:18 }, peekPhoto:{ width:102, height:102, borderRadius:38 }, peekCaption:{ color:'#979ba6', fontSize:11, textAlign:'center', lineHeight:17, marginTop:18 },
   captureBusy:{ ...StyleSheet.absoluteFill, justifyContent:'center', alignItems:'center', backgroundColor:'#0006' }, error:{ color:'#ffadaf', fontSize:10, lineHeight:15, textAlign:'center', paddingBottom:12 },
   sentContent:{ alignItems:'center', paddingHorizontal:30, paddingBottom:55 }, sentIcon:{ width:65, height:65, borderRadius:26, backgroundColor:'#1c2a1c', borderWidth:1, borderColor:'#3a4c32', alignItems:'center', justifyContent:'center', marginBottom:24 }, sentTitle:{ color:'#f5f5f7', fontWeight:'600', letterSpacing:-.4 }, sentDescription:{ color:'#8e929d', textAlign:'center', lineHeight:20, marginTop:12 }, doneButton:{ paddingVertical:11, paddingHorizontal:30, borderRadius:24, backgroundColor:'#f0f1f3', marginTop:25 }, doneText:{ color:'#14171a', fontWeight:'600', fontSize:12 },
 });

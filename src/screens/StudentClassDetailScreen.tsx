@@ -12,13 +12,13 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
   Clock,
   QrCode,
 } from "lucide-react-native";
 import { getClassCalendar, getMyEnrolledClasses } from "../services/api";
+import { Colors } from "../theme/colors";
 import { optimizedAvatarUrl } from "../services/cloudinary";
 import { useStudentQuery } from "../hooks/useStudentQuery";
 import {
@@ -118,9 +118,9 @@ export default function StudentClassDetailScreen() {
                 {item?.courseCode || "Class details"}
               </Text>
             </View>
-            <View style={s.miniIcon}>
-              <BookOpen size={17} color="#a5bad8" />
-            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Show today's attendance" onPress={() => {setMonth(new Date(today.getFullYear(),today.getMonth(),1));setSelected(today.getDate());}} style={s.todayButton}>
+              <Text style={s.todayButtonText}>Today</Text>
+            </TouchableOpacity>
           </View>
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -161,7 +161,7 @@ export default function StudentClassDetailScreen() {
                 <View style={s.sectionHeading}>
                   <View>
                     <Text style={s.sectionTitle}>Attendance calendar</Text>
-                    <Text style={s.subtitle}>Your month, at a glance.</Text>
+                    <Text style={s.subtitle}>Select a day to see your record.</Text>
                   </View>
                   <View style={s.percent}>
                     <Text style={s.percentText}>
@@ -178,6 +178,7 @@ export default function StudentClassDetailScreen() {
                       accessibilityLabel="Previous month"
                       onPress={() => changeMonth(-1)}
                       style={s.monthArrow}
+                      hitSlop={6}
                     >
                       <ChevronLeft size={18} color="#b4c8e5" />
                     </TouchableOpacity>
@@ -192,12 +193,13 @@ export default function StudentClassDetailScreen() {
                       accessibilityLabel="Next month"
                       onPress={() => changeMonth(1)}
                       style={s.monthArrow}
+                      hitSlop={6}
                     >
                       <ChevronRight size={18} color="#b4c8e5" />
                     </TouchableOpacity>
                   </View>
                   <View style={s.weekRow}>
-                    {["M", "T", "W", "T", "F", "S", "S"].map((day, i) => (
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, i) => (
                       <Text key={i} style={s.weekday}>
                         {day}
                       </Text>
@@ -235,10 +237,11 @@ export default function StudentClassDetailScreen() {
                                 style={[
                                   s.day,
                                   isToday && s.today,
-                                  selected === day && s.selected,
+
                                   status !== "NONE" && {
-                                    backgroundColor: colors[status] + "20",
+                                    backgroundColor: colors[status] + "18",
                                   },
+                                  selected === day && s.selected,
                                 ]}
                               >
                                 <Text
@@ -404,12 +407,14 @@ export default function StudentClassDetailScreen() {
   );
 }
 const s = StyleSheet.create({
-  background: { flex: 1, backgroundColor: "#040d16", alignItems: "center" },
+  todayButton:{minHeight:44,paddingHorizontal:14,borderRadius:14,backgroundColor:Colors.cardElevated,justifyContent:'center',borderWidth:1,borderColor:Colors.borderSubtle},
+  todayButtonText:{fontSize:12,fontWeight:'600',color:Colors.textBrightBlue},
+  background: { flex: 1, backgroundColor: Colors.backgroundDark, alignItems: "center" },
   viewport: {
     flex: 1,
     width: "100%",
-    maxWidth: 430,
-    backgroundColor: "#061522",
+    maxWidth: 460,
+    backgroundColor: Colors.background,
   },
   topbar: {
     paddingHorizontal: 22,
@@ -428,7 +433,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   eyebrow: {
-    fontSize: 8,
+    fontSize: 10,
     color: "#768fae",
     letterSpacing: 1.8,
     fontWeight: "700",
@@ -466,15 +471,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#29475a",
     borderRadius: 12,
-    backgroundColor: "#112d35",
+    backgroundColor: Colors.cardDataStructures,
   },
-  percentText: { color: "#98cdb5", fontSize: 13, fontWeight: "600" },
+  percentText: { color: Colors.textBrightBlue, fontSize: 13, fontWeight: "600" },
   calendar: {
     backgroundColor: "#102235",
     borderWidth: 1,
     borderColor: "#253d55",
-    borderRadius: 17,
-    padding: 10,
+    borderRadius: 22,
+    padding: 12,
   },
   monthBar: {
     flexDirection: "row",
@@ -495,29 +500,29 @@ const s = StyleSheet.create({
   weekday: {
     width: "14.2857%",
     textAlign: "center",
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "600",
     color: "#6f87a5",
   },
   days: { flexDirection: "row", flexWrap: "wrap" },
   dayCell: {
     width: "14.2857%",
-    height: 36,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
   day: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "transparent",
   },
   today: { borderColor: "#436480" },
-  selected: { borderColor: "#9db5d5" },
-  dayNumber: { fontSize: 12, color: "#9fb1cb" },
+  selected: { borderColor: Colors.textAccentBlue, backgroundColor: Colors.cardDataStructures },
+  dayNumber: { fontSize: 13, color: "#9fb1cb" },
   dayDot: { width: 3, height: 3, borderRadius: 2, marginTop: 4 },
   legend: {
     flexDirection: "row",
@@ -530,7 +535,7 @@ const s = StyleSheet.create({
   },
   legendItem: { flexDirection: "row", gap: 5, alignItems: "center" },
   legendDot: { width: 5, height: 5, borderRadius: 3 },
-  legendText: { fontSize: 9, color: "#8fa6c4" },
+  legendText: { fontSize: 11, color: "#8fa6c4" },
   summary: {
     flexDirection: "row",
     paddingVertical: 12,
@@ -538,7 +543,7 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   summaryItem: { flex: 1, alignItems: "center", gap: 4 },
-  summaryNumber: { fontSize: 18, fontWeight: "600", color: "#d9c38e" },
+  summaryNumber: { fontSize: 22, fontWeight: "600", color: "#d9c38e" },
   summaryLabel: { fontSize: 10, color: "#7f98b6" },
   summaryDivider: { width: 1, height: 26, backgroundColor: "#263d54" },
   dayDetail: {
@@ -566,11 +571,11 @@ const s = StyleSheet.create({
     gap: 8,
   },
   sessionTime: { flexDirection: "row", alignItems: "center", gap: 5, flex: 1 },
-  sessionTimeText: { fontSize: 10, color: "#91a8c5", flexShrink: 1 },
-  sessionStatus: { fontSize: 10, fontWeight: "600" },
+  sessionTimeText: { fontSize: 12, color: "#91a8c5", flexShrink: 1 },
+  sessionStatus: { fontSize: 12, fontWeight: "600" },
   reason: { fontSize: 11, color: "#cf9ea7", lineHeight: 17, marginTop: 9 },
   empty: { fontSize: 11, color: "#7991af", lineHeight: 18 },
-  footnote: { fontSize: 9, lineHeight: 15, color: "#657f9e", marginTop: 13 },
+  footnote: { fontSize: 11, lineHeight: 15, color: "#657f9e", marginTop: 13 },
   scan: {
     backgroundColor: "#bfd1eb",
     flexDirection: "row",
