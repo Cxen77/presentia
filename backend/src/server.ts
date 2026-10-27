@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { startSelfieCleanupWorker } from './services/selfieCleanup';
 import { startProxyAuditWorker } from './services/proxyAudit';
+import { allowedBrowserOrigins } from './services/portalOrigins';
 import deviceRoutes from './routes/devices';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
@@ -29,13 +30,13 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // --- CORS ---
-const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+const allowedOrigins = allowedBrowserOrigins(env.ALLOWED_ORIGINS);
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, server-to-server)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
       logger.warn({ origin }, 'Blocked by CORS');

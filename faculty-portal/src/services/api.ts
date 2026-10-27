@@ -3,10 +3,10 @@
  * All protected operations go through the Render backend API.
  * Supabase client is only used directly for auth operations and Realtime subscriptions.
  */
-import { supabase } from './supabase';
+import { supabase, portalConfiguration } from './supabase';
 import { authenticatedRequest } from './sessionRecovery';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = portalConfiguration.apiBaseUrl;
 
 /**
  * Makes an authenticated API request to the Render backend.

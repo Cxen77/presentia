@@ -1,7 +1,12 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readPortalConfiguration } from './src/services/configuration.ts'
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  // Vite embeds these values into the JavaScript bundle. Reject a wrong project
+  // before it can replace a working production deployment.
+  if(command==='build')readPortalConfiguration({...loadEnv(mode,process.cwd(),''),DEV:false})
+  return {
   plugins: [react()],
   resolve: {
     alias: {
@@ -32,4 +37,5 @@ export default defineConfig({
       },
     },
   },
+  }
 })
