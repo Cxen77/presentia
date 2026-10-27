@@ -1090,10 +1090,20 @@ export const LoginScreen: React.FC<{ onBack?: () => void; onLoginSuccess: () => 
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: identifier.trim(),
-        password,
-      });
+      // A class logging in at once can trip Supabase's per-IP rate limit
+      // (429). Quietly back off and retry so students never see it.
+      let data: any = null;
+      let error: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const result = await supabase.auth.signInWithPassword({
+          email: identifier.trim(),
+          password,
+        });
+        data = result.data;
+        error = result.error;
+        if (!error || error.status !== 429) break;
+        await new Promise((resolve) => setTimeout(resolve, 2500 * attempt));
+      }
       if (error) {
         setErrorMessage(authErrorMessage(error));
         return;

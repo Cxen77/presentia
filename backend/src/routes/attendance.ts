@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { isCloudinaryConfigured, isOwnedAttendancePhoto } from '../services/cloudinary';
 import { createScanTicket, readScanTicket } from '../services/scanTicket';
 import { locationSchema, checkLocation, loadClassGeofence } from '../services/geofence';
+import { rotateSessionToken } from '../services/qrTokens';
 
 const router = Router();
 
@@ -30,18 +31,32 @@ router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
   if (!parsed.success || !user.profileId) return res.status(400).json({ error: 'Complete your profile and scan a valid attendance QR.' });
   const { data: token, error } = await supabaseAdmin.from('qr_tokens').select('*, session:session_id(*)').eq('token', parsed.data.qrToken).maybeSingle();
   if (error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
-  if (!token || Date.now() > new Date(token.expires_at).getTime() + 5000) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
+  if (!token) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
   const session = token.session as any;
   if (session?.status !== 'ACTIVE') return res.status(400).json({ error: 'This attendance session is no longer accepting scans.' });
-  const { data: enrollment } = await supabaseAdmin.from('class_enrollments').select('id').eq('student_id', user.profileId).eq('class_id', session.class_id).eq('status', 'active').maybeSingle();
-  if (!enrollment) return res.status(403).json({ error: 'You are not enrolled in this class.' });
-  const { data: existing } = await supabaseAdmin.from('attendance_records').select('id').eq('session_id', session.id).eq('student_id', user.profileId).maybeSingle();
-  if (existing) return res.status(409).json({ error: 'You have already submitted attendance for this session.' });
+  // Enrollment and duplicate-submission checks are independent — run together.
+  const [enrollmentRes, existingRes] = await Promise.all([
+    supabaseAdmin.from('class_enrollments').select('id').eq('student_id', user.profileId).eq('class_id', session.class_id).eq('status', 'active').maybeSingle(),
+    supabaseAdmin.from('attendance_records').select('id').eq('session_id', session.id).eq('student_id', user.profileId).maybeSingle(),
+  ]);
+  if (enrollmentRes.error || existingRes.error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
+  if (!enrollmentRes.data) return res.status(403).json({ error: 'You are not enrolled in this class.' });
+  if (existingRes.data) return res.status(409).json({ error: 'You have already submitted attendance for this session.' });
   try {
     const policy=await loadClassGeofence(supabaseAdmin,session.class_id);
     const check=checkLocation(parsed.data.location,policy);
     if(check.error)return res.status(403).json({error:check.error});
   }catch(error){return res.status(503).json({error:error instanceof Error?error.message:'Campus rules unavailable.'});}
+  // The portal normally rotates the code from its own timer; if that tab is
+  // throttled the latest code can lapse. Accept a just-expired scan (short
+  // grace) and mint the next token server-side so following students scan a
+  // live code. Scans older than the grace window still fail.
+  const expiresAtMs = new Date(token.expires_at).getTime();
+  const now = Date.now();
+  if (now > expiresAtMs + 5000) {
+    if (now > expiresAtMs + 15000) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
+    await rotateSessionToken(session.id).catch(() => null);
+  }
   const scan = createScanTicket(user.authUserId, token.id, session.id,Date.now(),parsed.data.location);
   return res.json({ scanTicket: scan.ticket, expiresAt: scan.expiresAt, sessionId: session.id });
 });

@@ -47,38 +47,44 @@ router.get('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) =
     return res.status(500).json({ error: 'Failed to fetch classes' });
   }
 
-  // Enrich with enrolled student count
-  const enriched = await Promise.all(
-    (data || []).map(async (cls) => {
-      const { count } = await supabaseAdmin
+  // Count active enrollments for all fetched classes in one query
+  // (replaces the per-class count loop that scaled with class count).
+  const classIds = (data || []).map(cls => cls.id);
+  const { data: enrollRows, error: enrollError } = classIds.length
+    ? await supabaseAdmin
         .from('class_enrollments')
-        .select('*', { count: 'exact', head: true })
-        .eq('class_id', cls.id)
-        .eq('status', 'active');
+        .select('class_id')
+        .in('class_id', classIds)
+        .eq('status', 'active')
+    : { data: [] as { class_id: string }[], error: null };
+  if (enrollError) {
+    logger.error({ err: enrollError }, 'Error counting enrollments');
+    return res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+  const counts = new Map<string, number>();
+  for (const row of enrollRows || []) counts.set(row.class_id, (counts.get(row.class_id) || 0) + 1);
 
-      return {
-        id: cls.id,
-        courseCode: cls.course_code,
-        className: cls.class_name,
-        department: cls.department,
-        semester: cls.semester || '',
-        room: cls.room || '',
-        scheduleInfo: cls.schedule_info || '',
-        startTime: cls.start_time || '',
-        endTime: cls.end_time || '',
-        classType: cls.class_type || 'Theory',
-        credits: cls.credits || 4,
-        enrollmentCode: cls.enrollment_code,
-        facultyId: cls.faculty_id,
-        facultyName: cls.teacher_name || user.fullName,
-        description: cls.description || '',
-        enrolledStudentsCount: count || 0,
-        isActive: cls.is_active ?? true,
-        createdAt: cls.created_at,
-        geofence:cls.geofence || {enabled:false},
-      };
-    })
-  );
+  const enriched = (data || []).map((cls) => ({
+    id: cls.id,
+    courseCode: cls.course_code,
+    className: cls.class_name,
+    department: cls.department,
+    semester: cls.semester || '',
+    room: cls.room || '',
+    scheduleInfo: cls.schedule_info || '',
+    startTime: cls.start_time || '',
+    endTime: cls.end_time || '',
+    classType: cls.class_type || 'Theory',
+    credits: cls.credits || 4,
+    enrollmentCode: cls.enrollment_code,
+    facultyId: cls.faculty_id,
+    facultyName: cls.teacher_name || user.fullName,
+    description: cls.description || '',
+    enrolledStudentsCount: counts.get(cls.id) || 0,
+    isActive: cls.is_active ?? true,
+    createdAt: cls.created_at,
+    geofence:cls.geofence || {enabled:false},
+  }));
 
   return res.json(enriched);
 });

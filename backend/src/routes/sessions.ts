@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {compareRoster} from '../services/roster';
 import { z } from 'zod';
-import crypto from 'crypto';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
@@ -9,6 +8,7 @@ import { env } from '../config/env';
 import { attendancePhotoDeliveryUrl, profilePhotoDeliveryUrl } from '../services/cloudinary';
 import { batchReviewSchema, reviewDatabaseError } from '../services/batchReview';
 import { cleanupFinalizedSelfies } from '../services/selfieCleanup';
+import { createQRTokenRecord, rotateSessionToken } from '../services/qrTokens';
 
 const router = Router();
 
@@ -26,41 +26,9 @@ router.get('/', requireAuth, requireRole('faculty', 'admin'), async (req, res) =
 });
 
 /**
- * Generates a cryptographically secure QR token string.
- */
-function generateQRToken(courseCode: string, sequence: number): string {
-  const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const timestamp = Date.now().toString(36).toUpperCase();
-  return `ATT-${courseCode}-${sequence}-${randomHex}-${timestamp}`;
-}
-
-/**
  * Creates a new QR token record in the database.
+ * (Implementation lives in services/qrTokens.ts, shared with the scan route.)
  */
-async function createQRTokenRecord(sessionId: string, courseCode: string, sequence: number) {
-  const ttl = parseInt(env.QR_TOKEN_TTL_SECONDS, 10) || 25;
-  const token = generateQRToken(courseCode, sequence);
-  const nonce = crypto.randomBytes(8).toString('hex');
-  const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
-
-  const { data, error } = await supabaseAdmin
-    .from('qr_tokens')
-    .insert({
-      session_id: sessionId,
-      token,
-      nonce,
-      expires_at: expiresAt,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    logger.error({ err: error }, 'Failed to create QR token');
-    throw error;
-  }
-
-  return data;
-}
 
 /**
  * POST /api/sessions
@@ -221,15 +189,11 @@ router.post('/:id/rotate-token', requireAuth, requireRole('faculty', 'admin'), a
     return res.status(400).json({ error: 'Session is not active' });
   }
 
-  const nextCount = session.token_rotation_count + 1;
-  const courseCode = (session as any).classes?.course_code || 'ATT';
-  const tokenRecord = await createQRTokenRecord(id, courseCode, nextCount);
-
-  // Update session rotation count
-  await supabaseAdmin
-    .from('attendance_sessions')
-    .update({ token_rotation_count: nextCount })
-    .eq('id', id);
+  const rotated = await rotateSessionToken(id);
+  if (!rotated) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  const { tokenRecord, nextCount } = rotated;
 
   return res.json({
     currentToken: tokenRecord.token,
