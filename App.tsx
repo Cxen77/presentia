@@ -76,7 +76,7 @@ import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
 import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } from './src/components/StudentActivity';
 import { ProfileSettingsModal, type SettingsSection } from './src/components/ProfileSettingsModal';
 import { clearStudentCache } from './src/services/studentCache';
-import { getAttendanceLocation, warmGrantedLocation } from './src/services/checkInLocation';
+import { getAttendanceLocation, warmGrantedLocation, attendancePermissionStatus, requestAttendancePermission, openAppSettings, type LocationGate } from './src/services/checkInLocation';
 import { uploadCloudinaryImage, uploadImageToCloudinary, optimizedAvatarUrl } from './src/services/cloudinary';
 import { SkeletonBlock, ClassCardSkeleton } from './src/components/Skeleton';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
@@ -881,6 +881,8 @@ export const QRScannerModal: React.FC<{
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
   const [attendanceSuccess, setAttendanceSuccess] = useState(false);
   const [selfieVisible, setSelfieVisible] = useState(false);
+  const [locationGate, setLocationGate] = useState<LocationGate | null>(null);
+  const [pendingScanData, setPendingScanData] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -892,11 +894,22 @@ export const QRScannerModal: React.FC<{
       setAttendanceSuccess(false);
       setSelfieVisible(false);
       void warmGrantedLocation().catch(()=>{});
+      // Surface the in-app location explainer before the first scan if the
+      // OS permission hasn't been granted yet.
+      void attendancePermissionStatus().then((gate) => {
+        setLocationGate(gate === 'granted' ? null : gate);
+      }).catch(()=>{});
     }
   }, [visible]);
 
   const handleScan = async (data: string) => {
     if (scanned || enrolling || submittingAttendance) return;
+    const gate = await attendancePermissionStatus();
+    if (gate !== 'granted') {
+      setPendingScanData(data);
+      setLocationGate(gate);
+      return;
+    }
     setScanned(true);
     setNotice(null);
     setErrorMsg(null);
@@ -913,6 +926,18 @@ export const QRScannerModal: React.FC<{
       } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Could not validate this QR.'); }
     } else {
       setErrorMsg(res.message || 'Invalid QR code.');
+    }
+  };
+
+  const allowLocation = async () => {
+    const gate = await requestAttendancePermission();
+    if (gate === 'granted') {
+      setLocationGate(null);
+      const data = pendingScanData;
+      setPendingScanData(null);
+      if (data) { setScanned(false); void handleScan(data); }
+    } else {
+      setLocationGate(gate);
     }
   };
 
@@ -978,6 +1003,29 @@ export const QRScannerModal: React.FC<{
                 onBarcodeScanned={({ data }) => handleScan(data)}
               />
               <View style={styles.scanTargetBox} />
+            </View>
+          )}
+
+          {locationGate && (
+            <View style={styles.detectedClassCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                <MapPin size={18} color="#9AB9EC" style={{ marginRight: 6 }} />
+                <Text style={styles.detectedClassTitle}>{locationGate === 'settings' ? 'Location access is off' : 'Why we need your location'}</Text>
+              </View>
+              <Text style={{ color: '#8EA5C2', fontSize: 11, marginBottom: 12, lineHeight: 17 }}>
+                {locationGate === 'settings'
+                  ? 'Campus check-in needs precise location. Turn on location for Presentia in your phone settings, then scan again.'
+                  : 'Presentia uses your location only during check-in to confirm you are on campus. Nothing is tracked in the background.'}
+              </Text>
+              {locationGate === 'settings' ? (
+                <TouchableOpacity style={[styles.confirmJoinBtn, { backgroundColor: '#4ADE80' }]} onPress={openAppSettings} accessibilityRole="button" accessibilityLabel="Open app settings">
+                  <Text style={styles.confirmJoinText}>Open app settings</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.confirmJoinBtn} onPress={allowLocation} accessibilityRole="button" accessibilityLabel="Allow location access">
+                  <Text style={styles.confirmJoinText}>Allow location access</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 

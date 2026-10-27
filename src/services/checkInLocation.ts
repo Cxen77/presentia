@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import type { CheckInLocation } from './api';
 
@@ -81,4 +81,29 @@ export async function inspectGrantedLocation() {
 export async function warmGrantedLocation() {
   const permission = await Location.getForegroundPermissionsAsync();
   if (permission.granted) await getAttendanceLocation();
+}
+
+// --- In-app permission flow -------------------------------------------------
+// The OS dialog should only ever appear from a user gesture, with the reason
+// explained first; after a denial, the only fix is the app's settings page.
+
+export type LocationGate = 'granted' | 'primer' | 'settings';
+
+/** Where the check-in flow stands: granted, explainer needed, or settings needed. */
+export async function attendancePermissionStatus(): Promise<LocationGate> {
+  const permission = await Location.getForegroundPermissionsAsync();
+  if (permission.granted) return 'granted';
+  return permission.canAskAgain ? 'primer' : 'settings';
+}
+
+/** Call from the in-app explainer's button (a user gesture). */
+export async function requestAttendancePermission(): Promise<LocationGate> {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (permission.granted) return 'granted';
+  return permission.canAskAgain ? 'primer' : 'settings';
+}
+
+/** After a hard denial, the student must flip the switch in OS settings. */
+export function openAppSettings() {
+  void Linking.openSettings();
 }
