@@ -31,7 +31,10 @@ router.post('/scan', requireAuth, requireRole('student'), async (req, res) => {
   if (!isCloudinaryConfigured()) return res.status(503).json({error:'Photo uploads are not configured yet. Please contact your teacher.'});
   const user = req.user!;
   const parsed = z.object({ qrToken: z.string().min(1).max(512), location:locationSchema.nullable(), installationId:installationSchema, platform:z.enum(['android','ios','web']) }).safeParse(req.body);
-  if (!parsed.success || !user.profileId) return res.status(400).json({ error: 'Complete your profile and scan a valid attendance QR.' });
+  if (!parsed.success || !user.profileId) {
+    const needsUpdate=user.profileId && typeof req.body?.installationId!=='string';
+    return res.status(needsUpdate?426:400).json({error:needsUpdate?'Update required: install the latest Presentia APK with device registration, then scan the current QR again.':'Complete your profile and scan a valid attendance QR.'});
+  }
   const { data: token, error } = await supabaseAdmin.from('qr_tokens').select('*, session:session_id(*)').eq('token', parsed.data.qrToken).maybeSingle();
   if (error) return res.status(500).json({ error: 'Could not validate the QR. Please retry.' });
   if (!token) return res.status(400).json({ error: 'QR expired. Scan the latest QR shown by your teacher.' });
@@ -91,7 +94,8 @@ router.post('/submit', requireAuth, requireRole('student'), async (req, res) => 
 
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Invalid submission data' });
+    const needsUpdate=typeof req.body?.installationId!=='string';
+    return res.status(needsUpdate?426:400).json({ error:needsUpdate?'Update required: install the latest Presentia APK with device registration, then scan the current QR again.':'Invalid submission data' });
   }
 
   const { qrToken, verificationPhotoUrl, verificationPhotoSignature, scanTicket, location, installationId } = parsed.data;

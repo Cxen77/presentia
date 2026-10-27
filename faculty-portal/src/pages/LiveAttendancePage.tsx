@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { AttendanceQRCode } from '../components/attendance/AttendanceQRCode';
 import { QrCode, Clock, CheckCircle2, RefreshCw, StopCircle, FileSpreadsheet, Play, Maximize2, ChevronRight } from 'lucide-react';
 import { Dialog, Disclosure, InlineError, PageHeading, WorkbenchSkeleton } from '../components/ui/PortalUI';
 import { useAuth } from '../context/AuthContext';
@@ -195,16 +195,7 @@ export const LiveAttendancePage: React.FC = () => {
     finally {setFinalizing(false);}
   };
 
-  // QR Code Payload (JSON formatted with token, session id, and cryptographic timestamp)
-  const qrPayload = activeSession ? JSON.stringify({
-    type: 'ATTENDANCE_CHECKIN',
-    sessionId: activeSession.id,
-    classId: activeSession.classId,
-    courseCode: activeSession.courseCode,
-    token: activeSession.currentToken,
-    expiresAt: activeSession.tokenExpiresAt,
-    sequence: activeSession.tokenRotationCount,
-  }) : '';
+
 
   return <div className="page-stack attendance-desk">
     <PageHeading title="Live attendance" description={loading ? 'Loading your attendance session…' : activeSession ? `${activeSession.courseCode} · ${activeSession.className}` : 'Choose a class to open student check-in.'}
@@ -221,7 +212,7 @@ export const LiveAttendancePage: React.FC = () => {
       <div className="attendance-session-meta"><span className="session-state"><span className={`desk-state-mark ${activeSession.status === 'ACTIVE' ? 'is-live' : ''}`}/>{activeSession.status === 'ACTIVE' ? 'Check-in open' : 'Check-in closed'}</span><span><strong>{totalEnrolled}</strong> enrolled</span><span><strong><AnimatedNumber value={records.length}/></strong> submitted</span><span className="session-room">{activeSession.room}</span></div>
       <div className="attendance-workbench">
         <aside className="qr-station"><div className="qr-station-heading"><h2>Scan to check in</h2><button className="icon-button" aria-label="Enlarge QR code" onClick={() => setProjectQR(true)}><Maximize2 size={16}/></button></div>
-          <div className="qr-paper">{activeSession.status === 'ACTIVE' ? <div key={activeSession.tokenRotationCount} className="qr-rollover"><QRCodeSVG role="img" aria-label={`Attendance QR code for ${activeSession.courseCode}`} value={qrPayload} size={228} level="H" includeMargin={false}/></div> : <p>Scanning is closed.<br/>You can still review submissions.</p>}</div>
+          <div className="qr-paper">{activeSession.status === 'ACTIVE' ? <div key={activeSession.tokenRotationCount} className="qr-rollover"><AttendanceQRCode token={activeSession.currentToken} courseCode={activeSession.courseCode} size={228}/></div> : <p>Scanning is closed.<br/>You can still review submissions.</p>}</div>
           {activeSession.status === 'ACTIVE' && <div className="qr-timing"><div><span><Clock size={13}/>Next code</span><strong>{secondsRemaining}s</strong></div><div className="qr-timer-track" role="progressbar" aria-label="QR code validity" aria-valuenow={Math.min(25,secondsRemaining)} aria-valuemin={0} aria-valuemax={25}><span style={{transform:`scaleX(${Math.max(0,Math.min(1,secondsRemaining/25))})`}}/></div><p>The code refreshes every 25 seconds.</p></div>}
           <div className="qr-course-meta"><span>{activeSession.courseCode}</span><p>{activeSession.className}</p></div>
           <Disclosure title="Session details"><p>Code rotation {activeSession.tokenRotationCount}. Students must submit a selfie for your review; scanning alone does not mark them present.</p></Disclosure>
@@ -236,7 +227,7 @@ export const LiveAttendancePage: React.FC = () => {
         </section>
       </div>
     </>}
-    {projectQR && activeSession && <Dialog title={activeSession.courseCode + ' check-in'} onClose={() => setProjectQR(false)}><div className="projected-qr">{activeSession.status === 'ACTIVE' ? <QRCodeSVG role="img" aria-label={`Attendance QR code for ${activeSession.courseCode}`} value={qrPayload} size={460} level="H" includeMargin/> : <p>Scanning is closed.</p>}<p>{activeSession.className}</p><span>Scan with the student app</span></div></Dialog>}
+    {projectQR && activeSession && <Dialog title={activeSession.courseCode + ' check-in'} onClose={() => setProjectQR(false)}><div className="projected-qr">{activeSession.status === 'ACTIVE' ? <AttendanceQRCode token={activeSession.currentToken} courseCode={activeSession.courseCode} size={460}/> : <p>Scanning is closed.</p>}<p>{activeSession.className}</p><span>Scan with the student app</span></div></Dialog>}
     {reviewDraft && <Dialog title="Confirm class attendance?" onClose={() => {if(!finalizing)setReviewDraft(null);}}><InlineError message={startError}/><div className="batch-confirm-counts"><span><strong>{reviewDraft.expectedRecords.length - reviewDraft.excludedRecordIds.length}</strong>Present</span><span><strong>{reviewDraft.excludedRecordIds.length}</strong>Excluded / absent</span></div><p className="review-dialog-copy">Students without a submission will also be absent. Attendance decisions will be saved together.</p><p className="review-dialog-copy">Session selfies will be permanently deleted after confirmation. Student profile photos and attendance history will remain.</p><div className="review-dialog-actions"><button className="p-button secondary" disabled={finalizing} onClick={() => setReviewDraft(null)}>Back to review</button><button className="p-button" disabled={finalizing} onClick={() => void confirmClass()}>{finalizing ? 'Confirming class…' : 'Confirm class & delete selfies'}</button></div></Dialog>}
     {confirmEndModal && <Dialog title="End check-in and review?" onClose={() => {if(!ending)setConfirmEndModal(false);}}><p className="review-dialog-copy">Students will no longer be able to submit. You can review all photos and exclude students before confirming the class.</p><div className="review-dialog-actions"><button className="p-button secondary" disabled={ending} onClick={() => setConfirmEndModal(false)}>Keep session open</button><button className="p-button" disabled={ending} onClick={() => void handleEndSession()}>{ending ? 'Ending…' : 'End check-in & review'}<ChevronRight size={14}/></button></div></Dialog>}
   </div>;

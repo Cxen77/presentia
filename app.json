@@ -29,6 +29,7 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Presentia to use your camera for QR scans and attendance selfies.",
+          "barcodeScannerEnabled": true,
           "recordAudioAndroid": false
         }
       ],

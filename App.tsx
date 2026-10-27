@@ -76,8 +76,9 @@ import { SelfieCheckInModal } from './src/components/SelfieCheckInModal';
 import { AttendanceDecisionNotice, StudentAttendanceView, StudentClassesView } from './src/components/StudentActivity';
 import { ProfileSettingsModal, type SettingsSection } from './src/components/ProfileSettingsModal';
 import { clearStudentCache } from './src/services/studentCache';
-import { getAttendanceLocation, warmGrantedLocation, attendancePermissionStatus, requestAttendancePermission, openAppSettings, type LocationGate } from './src/services/checkInLocation';
+import { getAttendanceLocation, attendancePermissionStatus, requestAttendancePermission, openAppSettings, type LocationGate } from './src/services/checkInLocation';
 import { uploadCloudinaryImage, uploadImageToCloudinary, optimizedAvatarUrl } from './src/services/cloudinary';
+import { createQRScanRunner } from './src/services/qrScanRunner';
 import { SkeletonBlock, ClassCardSkeleton } from './src/components/Skeleton';
 export { uploadImageToCloudinary } from './src/services/cloudinary';
 
@@ -860,61 +861,74 @@ export const QRScannerModal: React.FC<{
   const [locationGate, setLocationGate] = useState<LocationGate | null>(null);
   const [pendingScanData, setPendingScanData] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (visible) {
-      setScanned(false);
-      setDetectedClass(null);
-      setDetectedAttendance(null);
-      setNotice(null);
-      setErrorMsg(null);
-      setAttendanceSuccess(false);
-      setSelfieVisible(false);
-      void warmGrantedLocation().catch(()=>{});
-      // Surface the in-app location explainer before the first scan if the
-      // OS permission hasn't been granted yet.
-      void attendancePermissionStatus().then((gate) => {
-        setLocationGate(gate === 'granted' ? null : gate);
-      }).catch(()=>{});
-    }
-  }, [visible]);
-
-  const handleScan = async (data: string) => {
-    if (scanned || enrolling || submittingAttendance) return;
-    const gate = await attendancePermissionStatus();
-    if (gate !== 'granted') {
-      setPendingScanData(data);
-      setLocationGate(gate);
-      return;
-    }
-    setScanned(true);
-    setNotice(null);
-    setErrorMsg(null);
-    const res = await studentService.validateQRPayload(data);
-    if (res.type === 'class_invite' && res.classData) {
-      setDetectedClass(res.classData);
-      setDetectedAttendance(null);
-    } else if (res.type === 'attendance_session' && res.attendanceToken) {
-      try {
-        const location=await getAttendanceLocation(true).catch(()=>null);
-        const scan = await studentApi.validateAttendanceScan(res.attendanceToken,location);
-        setDetectedAttendance({ token: res.attendanceToken, courseCode: res.courseCode, ...scan });
-        setSelfieVisible(true); setDetectedClass(null); setNotice('QR verified. Take your selfie within three minutes.');
-      } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Could not validate this QR.'); }
-    } else {
-      setErrorMsg(res.message || 'Invalid QR code.');
-    }
+  const [progress,setProgress]=useState<string|null>(null);
+  const [cameraReady,setCameraReady]=useState(false);
+  const [cameraKey,setCameraKey]=useState(0);
+  const [foreground,setForeground]=useState(AppState.currentState!=='background');
+  const [permissionBusy,setPermissionBusy]=useState(false);
+  const scannerOpen=useRef(visible);
+  const scanRevision=useRef(0);
+  const [scanRunner]=useState(()=>createQRScanRunner<DatabaseClass>({
+    validate:payload=>studentService.validateQRPayload(payload),
+    permission:attendancePermissionStatus,
+    location:()=>getAttendanceLocation(true),
+    attendance:studentApi.validateAttendanceScan,
+    update:update=>{
+      if(update.phase==='checking'){setScanned(true);setErrorMsg(null);setNotice(null);setProgress('QR detected. Checking code…');}
+      else if(update.phase==='locating')setProgress('QR detected. Getting a fresh location…');
+      else if(update.phase==='verifying')setProgress('QR detected. Verifying attendance…');
+      else {
+        setProgress(null);
+        if(update.phase==='permission'){setPendingScanData(update.payload);setLocationGate(update.gate);}
+        else if(update.phase==='invitation'){setDetectedClass(update.classData);setDetectedAttendance(null);}
+        else if(update.phase==='attendance'){setDetectedAttendance({token:update.token,courseCode:update.courseCode,...update.scan});setDetectedClass(null);setSelfieVisible(true);}
+        else if(update.phase==='error')setErrorMsg(update.message);
+      }
+    },
+  }));
+  const resetScan=()=>{
+    scanRevision.current++;setPermissionBusy(false);
+    scanRunner.reset();setScanned(false);setDetectedClass(null);setDetectedAttendance(null);
+    setNotice(null);setErrorMsg(null);setProgress(null);setAttendanceSuccess(false);setSelfieVisible(false);
+    setPendingScanData(null);setLocationGate(null);setCameraReady(false);setCameraKey(key=>key+1);
   };
-
-  const allowLocation = async () => {
-    const gate = await requestAttendancePermission();
-    if (gate === 'granted') {
-      setLocationGate(null);
-      const data = pendingScanData;
-      setPendingScanData(null);
-      if (data) { setScanned(false); void handleScan(data); }
-    } else {
-      setLocationGate(gate);
-    }
+  useEffect(()=>{
+    scannerOpen.current=visible;
+    if(visible)resetScan();
+    return()=>{scannerOpen.current=false;scanRevision.current++;scanRunner.reset();};
+    // Reset only when this modal opens/closes, not on camera frame updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[visible,scanRunner]);
+  useEffect(()=>{
+    const listener=AppState.addEventListener('change',state=>{setForeground(state==='active');if(state!=='active')setCameraReady(false);});
+    return()=>listener.remove();
+  },[]);
+  const handleScan=(data:string)=>{
+    if(!scannerOpen.current||enrolling||submittingAttendance)return;
+    return scanRunner.scan(data);
+  };
+  const allowLocation=async()=>{
+    if(permissionBusy)return;
+    const attempt=scanRevision.current;
+    setPermissionBusy(true);setErrorMsg(null);
+    try {
+      const gate=await requestAttendancePermission();
+      if(!scannerOpen.current||scanRevision.current!==attempt)return;
+      if(gate==='granted'){
+        const data=pendingScanData;
+        setLocationGate(null);setPendingScanData(null);
+        // The previous camera event was latched before the OS prompt. Reset the
+        // latch directly; React setState alone does not release it synchronously.
+        scanRunner.reset();setScanned(false);
+        if(data)void scanRunner.scan(data);
+      }else setLocationGate(gate);
+    }catch(error){if(scannerOpen.current&&scanRevision.current===attempt)setErrorMsg(error instanceof Error?error.message:'Could not request location permission.');}
+    finally{if(scannerOpen.current&&scanRevision.current===attempt)setPermissionBusy(false);}
+  };
+  const requestCamera=async()=>{
+    if(permission?.canAskAgain===false){openAppSettings();return;}
+    try{await requestPermission();}
+    catch(error){setErrorMsg(error instanceof Error?error.message:'Camera access failed. Enable the camera in app settings.');}
   };
 
   const confirmJoin = async () => {
@@ -967,20 +981,29 @@ export const QRScannerModal: React.FC<{
             <View style={styles.cameraPlaceholderBox}>
               <Camera size={38} color="#9AB9EC" style={{ marginBottom: 10 }} />
               <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-              <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
-                <Text style={styles.permButtonText}>Grant Access</Text>
+              <TouchableOpacity style={styles.permButton} onPress={()=>void requestCamera()}>
+                <Text style={styles.permButtonText}>{permission?.canAskAgain===false?'Open app settings':'Grant Access'}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.cameraViewWrap}>
-              <CameraView
+              {foreground && <CameraView
+                key={cameraKey}
                 style={StyleSheet.absoluteFill}
+                facing="back"
+                mode="picture"
                 barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                onBarcodeScanned={({ data }) => handleScan(data)}
-              />
-              <View style={styles.scanTargetBox} />
+                onCameraReady={()=>setCameraReady(true)}
+                onMountError={({message})=>{setCameraReady(false);setErrorMsg(`Camera/scanner error: ${message}. Tap Scan again to restart it.`);}}
+                onBarcodeScanned={({ data }) => {void handleScan(data);}}
+              />}
+              <View pointerEvents="none" style={styles.scanTargetBox} />
             </View>
           )}
+          <View accessibilityLiveRegion="polite" style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:10}}>
+            {progress && <ActivityIndicator size="small" color="#9AB9EC"/>}
+            <Text style={{color:'#9AB9EC',fontSize:12,flex:1}}>{progress || (!scanned ? cameraReady ? 'Keep the whole QR code in view, including its white border.' : 'Starting rear camera…' : errorMsg ? 'Scan stopped. Tap Scan again below.' : locationGate ? 'QR detected. Allow location to continue.' : 'QR code detected.')}</Text>
+          </View>
 
           {locationGate && (
             <View style={styles.detectedClassCard}>
@@ -998,8 +1021,8 @@ export const QRScannerModal: React.FC<{
                   <Text style={styles.confirmJoinText}>Open app settings</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={styles.confirmJoinBtn} onPress={allowLocation} accessibilityRole="button" accessibilityLabel="Allow location access">
-                  <Text style={styles.confirmJoinText}>Allow location access</Text>
+                <TouchableOpacity style={styles.confirmJoinBtn} onPress={()=>void allowLocation()} disabled={permissionBusy} accessibilityRole="button" accessibilityLabel="Allow location access">
+                  <Text style={styles.confirmJoinText}>{permissionBusy?'Requesting location…':'Allow location access'}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1056,6 +1079,10 @@ export const QRScannerModal: React.FC<{
               <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
           )}
+          {!progress && (scanned || errorMsg) && !attendanceSuccess && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Scan again" style={styles.permButton} onPress={resetScan} disabled={enrolling||submittingAttendance||permissionBusy}>
+            <Text style={styles.permButtonText}>Scan again</Text>
+          </TouchableOpacity>}
+
         </View>
       </View>
     </Modal>
