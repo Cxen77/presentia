@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
 import { getCloudinarySignature } from './api';
 
 export type CloudinaryFolder = 'student_profiles' | 'attendance_verification';
@@ -47,15 +49,20 @@ export async function uploadCloudinaryImage(imageUri: string, folder: Cloudinary
     if (blob.size > 10 * 1024 * 1024) throw new Error('Use a photo smaller than 10 MB.');
     form.append('file', blob, 'photo.jpg');
   } else {
-    const nativeFile = { uri: imageUri, name: imageUri.split('/').pop() || 'photo.jpg', type: /\.png(?:\?|$)/i.test(imageUri) ? 'image/png' : 'image/jpeg' };
-    form.append('file', nativeFile as unknown as Blob);
+    // SDK 58 uses expo/fetch on native. Its multipart encoder reads a Blob or
+    // File's bytes; React Native's old { uri, name, type } part is unsupported.
+    const nativeFile = new File(imageUri);
+    if (!nativeFile.exists || nativeFile.size === 0) throw new Error('Could not read the selected photo. Retake it and try again.');
+    if (nativeFile.type && !nativeFile.type.startsWith('image/')) throw new Error('Choose an image file.');
+    if (nativeFile.size > 10 * 1024 * 1024) throw new Error('Use a photo smaller than 10 MB.');
+    form.append('file', nativeFile);
   }
   for (const [key,value] of Object.entries({api_key:signed.apiKey,timestamp:signed.timestamp,signature:signed.signature,folder:signed.folder,public_id:signed.publicId,type:signed.type,overwrite:signed.overwrite})) form.append(key,String(value));
   onProgress?.(25);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(),60000);
   try {
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`,{method:'POST',body:form,signal:controller.signal});
+    const response = await expoFetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`,{method:'POST',body:form,signal:controller.signal});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Photo upload failed. Please try again.');
     const url = new URL(data.secure_url);
